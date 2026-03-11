@@ -71,7 +71,7 @@ function cn(...inputs: ClassValue[]) {
 }
 
 // --- Types ---
-type Screen = 'dashboard' | 'workout' | 'timer' | 'nutrition' | 'progress' | 'profile' | 'onboarding' | 'login' | 'welcome' | 'register';
+type Screen = 'home' | 'dashboard' | 'workout' | 'timer' | 'nutrition' | 'progress' | 'profile' | 'onboarding' | 'login' | 'welcome' | 'register';
 
 interface Client {
   id: string;
@@ -82,6 +82,17 @@ interface Client {
   img: string;
   weight?: string;
   bodyFat?: string;
+  stepsTarget?: number;
+  waterTarget?: number;
+}
+
+interface DailyLog {
+  date: string;
+  weight?: number;
+  sleepHours?: number;
+  sleepQuality?: 'Mal' | 'Regular' | 'Bien' | 'Excelente';
+  stepsCompleted: boolean;
+  waterCompleted: boolean;
 }
 
 interface Ingredient {
@@ -106,13 +117,19 @@ interface DailyNutrition {
   meals: Meal[];
 }
 
+// --- Constants & Data ---
+const clients: Client[] = [
+  { id: '1', name: 'Sarah Jenkins', program: 'Powerlifting • Phase 2', status: 'Today', active: true, img: 'https://picsum.photos/seed/sarah/100/100', weight: '64.2 kg', bodyFat: '21.4%', stepsTarget: 10000, waterTarget: 2.5 },
+  { id: '2', name: 'Marcus Chen', program: 'Hypertrophy • Week 4', status: '2 days ago', active: false, img: 'https://picsum.photos/seed/marcus/100/100', weight: '82.5 kg', bodyFat: '15.2%', stepsTarget: 8000, waterTarget: 3.0 },
+  { id: '3', name: 'Elena Rodriguez', program: 'Endurance • Advanced', status: 'Yesterday', active: true, img: 'https://picsum.photos/seed/elena/100/100', weight: '58.0 kg', bodyFat: '18.5%', stepsTarget: 12000, waterTarget: 2.0 },
+];
+
 // --- Components ---
 
 const BottomNav = ({ active, onChange, role }: { active: Screen; onChange: (s: Screen) => void; role: 'admin' | 'client' | null }) => {
   const navItems = [
-    ...(role === 'admin' ? [{ id: 'dashboard', label: 'Panel', icon: LayoutGrid }] : []),
+    ...(role === 'admin' ? [{ id: 'dashboard', label: 'Panel', icon: LayoutGrid }] : [{ id: 'home', label: 'Inicio', icon: LayoutGrid }]),
     { id: 'workout', label: 'Entrenar', icon: Dumbbell },
-    { id: 'timer', label: 'Cronómetro', icon: TimerIcon },
     { id: 'nutrition', label: 'Nutrición', icon: Utensils },
     { id: 'progress', label: 'Progreso', icon: TrendingUp },
     { id: 'profile', label: 'Perfil', icon: User },
@@ -139,6 +156,213 @@ const BottomNav = ({ active, onChange, role }: { active: Screen; onChange: (s: S
   );
 };
 
+const HomeScreen = ({ clientData, isCoach }: { clientData: Client | null; isCoach?: boolean }) => {
+  const [dailyLog, setDailyLog] = useState<DailyLog>(() => {
+    const today = new Date().toISOString().split('T')[0];
+    const saved = localStorage.getItem(`dailyLog_${clientData?.id || 'default'}_${today}`);
+    return saved ? JSON.parse(saved) : {
+      date: today,
+      stepsCompleted: false,
+      waterCompleted: false
+    };
+  });
+
+  const [targets, setTargets] = useState(() => {
+    const saved = clientData ? localStorage.getItem(`clientTargets_${clientData.id}`) : null;
+    return saved ? JSON.parse(saved) : {
+      steps: clientData?.stepsTarget || 10000,
+      water: clientData?.waterTarget || 2.5
+    };
+  });
+
+  useEffect(() => {
+    const today = new Date().toISOString().split('T')[0];
+    localStorage.setItem(`dailyLog_${clientData?.id || 'default'}_${today}`, JSON.stringify(dailyLog));
+  }, [dailyLog, clientData?.id]);
+
+  useEffect(() => {
+    if (clientData) {
+      localStorage.setItem(`clientTargets_${clientData.id}`, JSON.stringify(targets));
+    }
+  }, [targets, clientData?.id]);
+
+  const updateLog = (updates: Partial<DailyLog>) => {
+    if (isCoach) return; // Coach can't log daily metrics for client
+    setDailyLog(prev => ({ ...prev, ...updates }));
+  };
+
+  return (
+    <div className="min-h-screen bg-bg-dark text-white pb-32">
+      <header className="flex items-center p-4 sticky top-0 z-20 bg-bg-dark/80 backdrop-blur-md border-b border-primary/10">
+        <div className="size-10 shrink-0 overflow-hidden rounded-full border border-primary/30">
+          <img src={clientData?.img || "https://picsum.photos/seed/user/100/100"} className="w-full h-full object-cover" alt="User" />
+        </div>
+        <div className="ml-3 flex-1">
+          <p className="text-xs text-slate-400 font-medium">{isCoach ? 'Dashboard de Cliente' : '¡Hola de nuevo!'}</p>
+          <h2 className="text-lg font-bold leading-tight tracking-tight">{clientData?.name || 'Usuario'}</h2>
+        </div>
+        <button className="flex size-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+          <Bell className="size-5" />
+        </button>
+      </header>
+
+      <main className="p-4 space-y-6">
+        {/* Daily Goals Section */}
+        <section className="space-y-4">
+          <div className="flex justify-between items-center">
+            <h3 className="text-xl font-bold tracking-tight">Objetivos {isCoach ? '(Editables)' : 'de Hoy'}</h3>
+            {isCoach && <span className="text-[10px] font-bold text-primary uppercase tracking-widest">Modo Coach</span>}
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div 
+              className={cn(
+                "glass-card rounded-2xl p-4 flex flex-col items-center gap-3 transition-all border-2",
+                dailyLog.stepsCompleted && !isCoach ? "border-primary bg-primary/10" : "border-white/5"
+              )}
+            >
+              <div className={cn("p-3 rounded-xl", dailyLog.stepsCompleted && !isCoach ? "bg-primary text-bg-dark" : "bg-white/5 text-primary")}>
+                <TrendingUp className="size-6" />
+              </div>
+              <div className="text-center w-full">
+                <p className="text-[10px] font-bold uppercase text-slate-400">Pasos</p>
+                {isCoach ? (
+                  <input 
+                    type="number" 
+                    value={targets.steps}
+                    onChange={(e) => setTargets(prev => ({ ...prev, steps: parseInt(e.target.value) || 0 }))}
+                    className="w-full bg-white/5 border border-white/10 rounded-lg text-center font-black text-lg focus:ring-1 focus:ring-primary outline-none mt-1"
+                  />
+                ) : (
+                  <p className="text-lg font-black">{targets.steps}</p>
+                )}
+              </div>
+              {!isCoach && (
+                <button 
+                  onClick={() => updateLog({ stepsCompleted: !dailyLog.stepsCompleted })}
+                  className={cn(
+                    "size-6 rounded-full border-2 flex items-center justify-center transition-colors",
+                    dailyLog.stepsCompleted ? "bg-primary border-primary" : "border-white/20"
+                  )}
+                >
+                  {dailyLog.stepsCompleted && <Check className="size-4 text-bg-dark" />}
+                </button>
+              )}
+            </div>
+
+            <div 
+              className={cn(
+                "glass-card rounded-2xl p-4 flex flex-col items-center gap-3 transition-all border-2",
+                dailyLog.waterCompleted && !isCoach ? "border-primary bg-primary/10" : "border-white/5"
+              )}
+            >
+              <div className={cn("p-3 rounded-xl", dailyLog.waterCompleted && !isCoach ? "bg-primary text-bg-dark" : "bg-white/5 text-primary")}>
+                <Flame className="size-6" />
+              </div>
+              <div className="text-center w-full">
+                <p className="text-[10px] font-bold uppercase text-slate-400">Agua (L)</p>
+                {isCoach ? (
+                  <input 
+                    type="number" 
+                    step="0.5"
+                    value={targets.water}
+                    onChange={(e) => setTargets(prev => ({ ...prev, water: parseFloat(e.target.value) || 0 }))}
+                    className="w-full bg-white/5 border border-white/10 rounded-lg text-center font-black text-lg focus:ring-1 focus:ring-primary outline-none mt-1"
+                  />
+                ) : (
+                  <p className="text-lg font-black">{targets.water}</p>
+                )}
+              </div>
+              {!isCoach && (
+                <button 
+                  onClick={() => updateLog({ waterCompleted: !dailyLog.waterCompleted })}
+                  className={cn(
+                    "size-6 rounded-full border-2 flex items-center justify-center transition-colors",
+                    dailyLog.waterCompleted ? "bg-primary border-primary" : "border-white/20"
+                  )}
+                >
+                  {dailyLog.waterCompleted && <Check className="size-4 text-bg-dark" />}
+                </button>
+              )}
+            </div>
+          </div>
+        </section>
+
+        {/* Daily Logging Section */}
+        <section className="glass-panel rounded-3xl p-6 space-y-6">
+          <h3 className="text-lg font-bold">{isCoach ? 'Último Registro del Cliente' : 'Registro Diario'}</h3>
+          
+          <div className="space-y-4">
+            <div>
+              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 block">Peso en Ayunas (kg)</label>
+              <input 
+                type="number" 
+                step="0.1"
+                value={dailyLog.weight || ''}
+                onChange={(e) => updateLog({ weight: parseFloat(e.target.value) })}
+                placeholder={isCoach ? "Sin registro" : "Ej: 75.5"}
+                disabled={isCoach}
+                className="w-full bg-white/5 border border-white/10 rounded-xl p-4 text-xl font-bold focus:ring-2 focus:ring-primary outline-none disabled:opacity-50"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 block">Horas de Sueño</label>
+                <input 
+                  type="number" 
+                  value={dailyLog.sleepHours || ''}
+                  onChange={(e) => updateLog({ sleepHours: parseInt(e.target.value) })}
+                  placeholder={isCoach ? "-" : "Ej: 8"}
+                  disabled={isCoach}
+                  className="w-full bg-white/5 border border-white/10 rounded-xl p-4 text-xl font-bold focus:ring-2 focus:ring-primary outline-none disabled:opacity-50"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 block">Calidad</label>
+                <select 
+                  value={dailyLog.sleepQuality || ''}
+                  onChange={(e) => updateLog({ sleepQuality: e.target.value as any })}
+                  disabled={isCoach}
+                  className="w-full bg-white/5 border border-white/10 rounded-xl p-4 text-sm font-bold focus:ring-2 focus:ring-primary outline-none appearance-none disabled:opacity-50"
+                >
+                  <option value="" disabled>Seleccionar</option>
+                  <option value="Mal">Mal</option>
+                  <option value="Regular">Regular</option>
+                  <option value="Bien">Bien</option>
+                  <option value="Excelente">Excelente</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Quick Summary Section */}
+        <section className="space-y-4">
+          <h3 className="text-lg font-bold">Resumen de Progreso</h3>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="glass-card rounded-2xl p-4 border border-white/5">
+              <div className="flex items-center gap-2 mb-2">
+                <Dumbbell className="size-4 text-primary" />
+                <span className="text-[10px] font-bold uppercase text-slate-400">Entrenamiento</span>
+              </div>
+              <p className="text-sm font-bold">Próxima sesión:</p>
+              <p className="text-primary text-xs font-bold">Empuje (Mañana)</p>
+            </div>
+            <div className="glass-card rounded-2xl p-4 border border-white/5">
+              <div className="flex items-center gap-2 mb-2">
+                <Utensils className="size-4 text-primary" />
+                <span className="text-[10px] font-bold uppercase text-slate-400">Nutrición</span>
+              </div>
+              <p className="text-sm font-bold">Hoy:</p>
+              <p className="text-primary text-xs font-bold">1,850 / 2,200 kcal</p>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+  );
+};
+
 // --- Screens ---
 
 const DashboardScreen = ({ onAddClient, onSelectClient }: { onAddClient: () => void; onSelectClient: (client: Client) => void }) => {
@@ -150,12 +374,6 @@ const DashboardScreen = ({ onAddClient, onSelectClient }: { onAddClient: () => v
     { day: 'FRI', value: 70 },
     { day: 'SAT', value: 30 },
     { day: 'SUN', value: 20 },
-  ];
-
-  const clients: Client[] = [
-    { id: '1', name: 'Sarah Jenkins', program: 'Powerlifting • Phase 2', status: 'Today', active: true, img: 'https://picsum.photos/seed/sarah/100/100', weight: '64.2 kg', bodyFat: '21.4%' },
-    { id: '2', name: 'Marcus Chen', program: 'Hypertrophy • Week 4', status: '2 days ago', active: false, img: 'https://picsum.photos/seed/marcus/100/100', weight: '82.5 kg', bodyFat: '15.2%' },
-    { id: '3', name: 'Elena Rodriguez', program: 'Endurance • Advanced', status: 'Yesterday', active: true, img: 'https://picsum.photos/seed/elena/100/100', weight: '58.0 kg', bodyFat: '18.5%' },
   ];
 
   return (
@@ -2250,6 +2468,16 @@ const NutritionScreen = ({ isCoach, clientData }: { isCoach?: boolean; clientDat
 const ProgressScreen = ({ isCoach, clientData }: { isCoach?: boolean; clientData?: Client | null }) => {
   const [range, setRange] = useState('1M');
 
+  const latestWeight = (() => {
+    const today = new Date().toISOString().split('T')[0];
+    const saved = localStorage.getItem(`dailyLog_${clientData?.id || 'default'}_${today}`);
+    if (saved) {
+      const log = JSON.parse(saved);
+      if (log.weight) return `${log.weight} kg`;
+    }
+    return isCoach ? clientData?.weight : '82.5 kg';
+  })();
+
   return (
     <div className="min-h-screen bg-bg-dark text-white pb-32">
       <header className="sticky top-0 z-50 bg-bg-dark/80 backdrop-blur-md border-b border-white/10">
@@ -2277,7 +2505,7 @@ const ProgressScreen = ({ isCoach, clientData }: { isCoach?: boolean; clientData
           <div className="glass-card rounded-xl p-4">
             <p className="text-slate-400 text-xs font-medium uppercase">Peso Actual</p>
             <div className="flex items-baseline gap-2 mt-1">
-              <p className="text-2xl font-bold">{isCoach ? clientData?.weight : '82.5 kg'}</p>
+              <p className="text-2xl font-bold">{latestWeight}</p>
               <span className="text-red-500 text-xs font-bold">-1.2%</span>
             </div>
           </div>
@@ -2444,13 +2672,13 @@ export default function App() {
     if (role === 'admin') {
       setScreen('dashboard');
     } else {
-      setScreen('workout');
+      setScreen('home');
     }
   };
 
   const handleSelectClient = (client: Client) => {
     setSelectedClient(client);
-    setScreen('workout');
+    setScreen('home');
   };
 
   const isCoachViewing = userRole === 'admin' && selectedClient !== null;
@@ -2518,6 +2746,7 @@ export default function App() {
               onLogin={handleLogin} 
             />
           )}
+          {screen === 'home' && <HomeScreen isCoach={isCoachViewing} clientData={selectedClient || (userRole === 'client' ? clients[0] : null)} />}
           {screen === 'dashboard' && (
             <DashboardScreen 
               onAddClient={() => setScreen('register')} 

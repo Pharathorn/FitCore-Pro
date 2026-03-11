@@ -47,7 +47,14 @@ import {
   Eye,
   ShoppingCart,
   Download,
-  FileDown
+  FileDown,
+  Droplets,
+  Sun,
+  Sword,
+  Trophy,
+  Moon,
+  Footprints,
+  MessageCircle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { GoogleGenAI, Type } from "@google/genai";
@@ -73,6 +80,29 @@ function cn(...inputs: ClassValue[]) {
 // --- Types ---
 type Screen = 'home' | 'dashboard' | 'workout' | 'timer' | 'nutrition' | 'progress' | 'profile' | 'onboarding' | 'login' | 'welcome' | 'register';
 
+interface ProgressPhoto {
+  id: string;
+  date: string;
+  label: string;
+  img: string;
+}
+
+interface Achievement {
+  id: string;
+  title: string;
+  description: string;
+  icon: string;
+  category: 'training' | 'habits' | 'nutrition';
+  completed: boolean;
+}
+
+interface Coach {
+  id: string;
+  name: string;
+  phone: string;
+  img: string;
+}
+
 interface Client {
   id: string;
   name: string;
@@ -84,6 +114,9 @@ interface Client {
   bodyFat?: string;
   stepsTarget?: number;
   waterTarget?: number;
+  achievements?: Achievement[];
+  progressPhotos?: ProgressPhoto[];
+  assignedCoachId?: string;
 }
 
 interface DailyLog {
@@ -118,10 +151,16 @@ interface DailyNutrition {
 }
 
 // --- Constants & Data ---
+const coaches: Coach[] = [
+  { id: 'c1', name: 'Coach Alex', phone: '34600000000', img: 'https://picsum.photos/seed/coach1/100/100' },
+  { id: 'c2', name: 'Coach Maria', phone: '34611111111', img: 'https://picsum.photos/seed/coach2/100/100' },
+  { id: 'c3', name: 'Coach Juan', phone: '34622222222', img: 'https://picsum.photos/seed/coach3/100/100' }
+];
+
 const clients: Client[] = [
-  { id: '1', name: 'Sarah Jenkins', program: 'Powerlifting • Phase 2', status: 'Today', active: true, img: 'https://picsum.photos/seed/sarah/100/100', weight: '64.2 kg', bodyFat: '21.4%', stepsTarget: 10000, waterTarget: 2.5 },
-  { id: '2', name: 'Marcus Chen', program: 'Hypertrophy • Week 4', status: '2 days ago', active: false, img: 'https://picsum.photos/seed/marcus/100/100', weight: '82.5 kg', bodyFat: '15.2%', stepsTarget: 8000, waterTarget: 3.0 },
-  { id: '3', name: 'Elena Rodriguez', program: 'Endurance • Advanced', status: 'Yesterday', active: true, img: 'https://picsum.photos/seed/elena/100/100', weight: '58.0 kg', bodyFat: '18.5%', stepsTarget: 12000, waterTarget: 2.0 },
+  { id: '1', name: 'Sarah Jenkins', program: 'Powerlifting • Phase 2', status: 'Today', active: true, img: 'https://picsum.photos/seed/sarah/100/100', weight: '64.2 kg', bodyFat: '21.4%', stepsTarget: 10000, waterTarget: 2.5, assignedCoachId: 'c1' },
+  { id: '2', name: 'Marcus Chen', program: 'Hypertrophy • Week 4', status: '2 days ago', active: false, img: 'https://picsum.photos/seed/marcus/100/100', weight: '82.5 kg', bodyFat: '15.2%', stepsTarget: 8000, waterTarget: 3.0, assignedCoachId: 'c2' },
+  { id: '3', name: 'Elena Rodriguez', program: 'Endurance • Advanced', status: 'Yesterday', active: true, img: 'https://picsum.photos/seed/elena/100/100', weight: '58.0 kg', bodyFat: '18.5%', stepsTarget: 12000, waterTarget: 2.0, assignedCoachId: 'c1' },
 ];
 
 // --- Components ---
@@ -157,6 +196,7 @@ const BottomNav = ({ active, onChange, role }: { active: Screen; onChange: (s: S
 };
 
 const HomeScreen = ({ clientData, isCoach }: { clientData: Client | null; isCoach?: boolean }) => {
+  const assignedCoach = coaches.find(c => c.id === clientData?.assignedCoachId);
   const [dailyLog, setDailyLog] = useState<DailyLog>(() => {
     const today = new Date().toISOString().split('T')[0];
     const saved = localStorage.getItem(`dailyLog_${clientData?.id || 'default'}_${today}`);
@@ -198,7 +238,9 @@ const HomeScreen = ({ clientData, isCoach }: { clientData: Client | null; isCoac
           <img src={clientData?.img || "https://picsum.photos/seed/user/100/100"} className="w-full h-full object-cover" alt="User" />
         </div>
         <div className="ml-3 flex-1">
-          <p className="text-xs text-slate-400 font-medium">{isCoach ? 'Dashboard de Cliente' : '¡Hola de nuevo!'}</p>
+          <p className="text-xs text-slate-400 font-medium">
+            {isCoach ? 'Dashboard de Cliente' : (assignedCoach ? `Coach: ${assignedCoach.name}` : '¡Hola de nuevo!')}
+          </p>
           <h2 className="text-lg font-bold leading-tight tracking-tight">{clientData?.name || 'Usuario'}</h2>
         </div>
         <button className="flex size-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
@@ -365,7 +407,7 @@ const HomeScreen = ({ clientData, isCoach }: { clientData: Client | null; isCoac
 
 // --- Screens ---
 
-const DashboardScreen = ({ onAddClient, onSelectClient }: { onAddClient: () => void; onSelectClient: (client: Client) => void }) => {
+const DashboardScreen = ({ coach, onAddClient, onSelectClient }: { coach: Coach | null; onAddClient: () => void; onSelectClient: (client: Client) => void }) => {
   const engagementData = [
     { day: 'MON', value: 65 },
     { day: 'TUE', value: 85 },
@@ -380,11 +422,11 @@ const DashboardScreen = ({ onAddClient, onSelectClient }: { onAddClient: () => v
     <div className="min-h-screen bg-bg-dark text-white pb-24">
       <header className="flex items-center p-4 sticky top-0 z-20 bg-bg-dark/80 backdrop-blur-md border-b border-primary/10">
         <div className="size-10 shrink-0 overflow-hidden rounded-full border border-primary/30">
-          <img src="https://picsum.photos/seed/coach/100/100" className="w-full h-full object-cover" alt="Coach" />
+          <img src={coach?.img || "https://picsum.photos/seed/coach/100/100"} className="w-full h-full object-cover" alt="Coach" />
         </div>
         <div className="ml-3 flex-1">
           <p className="text-xs text-slate-400 font-medium">Panel de Entrenador,</p>
-          <h2 className="text-lg font-bold leading-tight tracking-tight">Coach Alex</h2>
+          <h2 className="text-lg font-bold leading-tight tracking-tight">{coach?.name || 'Coach Alex'}</h2>
         </div>
         <button className="flex size-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
           <Bell className="size-5" />
@@ -2467,6 +2509,54 @@ const NutritionScreen = ({ isCoach, clientData }: { isCoach?: boolean; clientDat
 
 const ProgressScreen = ({ isCoach, clientData }: { isCoach?: boolean; clientData?: Client | null }) => {
   const [range, setRange] = useState('1M');
+  const [activeTab, setActiveTab] = useState<'resumen' | 'historial' | 'logros' | 'fotos'>('resumen');
+  const [photos, setPhotos] = useState<ProgressPhoto[]>(() => {
+    const saved = localStorage.getItem(`progressPhotos_${clientData?.id || 'default'}`);
+    return saved ? JSON.parse(saved) : [
+      { id: '1', date: '12 Ene, 2024', label: 'Inicio', img: 'https://picsum.photos/seed/p1/300/400' },
+      { id: '2', date: '05 Feb, 2024', label: 'Semana 4', img: 'https://picsum.photos/seed/p2/300/400' },
+    ];
+  });
+
+  const achievements: Achievement[] = [
+    { id: '1', title: 'Primer Paso', description: 'Primer entrenamiento completado', icon: 'Dumbbell', category: 'training', completed: true },
+    { id: '2', title: 'Constancia de Hierro', description: 'Racha de 7 días entrenando', icon: 'Flame', category: 'training', completed: true },
+    { id: '3', title: 'Hidratación Pro', description: '100 litros de agua bebidos', icon: 'Droplets', category: 'habits', completed: true },
+    { id: '4', title: 'Madrugador', description: 'Entrenar antes de las 8 AM', icon: 'Sun', category: 'training', completed: false },
+    { id: '5', title: 'Guerrero del Finde', description: 'Entrenar Sábado y Domingo', icon: 'Sword', category: 'training', completed: false },
+    { id: '6', title: 'Chef Fitness', description: '7 días cumpliendo macros', icon: 'Utensils', category: 'nutrition', completed: true },
+    { id: '7', title: 'Transformación', description: 'Subir 4 fotos de progreso', icon: 'Camera', category: 'habits', completed: false },
+    { id: '8', title: 'Fuerza Bruta', description: 'Nuevo récord en Sentadilla', icon: 'Trophy', category: 'training', completed: false },
+    { id: '9', title: 'Sueño Reparador', description: '3 días con sueño excelente', icon: 'Moon', category: 'habits', completed: true },
+    { id: '10', title: 'Caminante', description: 'Objetivo de pasos semanal cumplido', icon: 'Footprints', category: 'habits', completed: true },
+  ];
+
+  useEffect(() => {
+    localStorage.setItem(`progressPhotos_${clientData?.id || 'default'}`, JSON.stringify(photos));
+  }, [photos, clientData?.id]);
+
+  const handleAddPhoto = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.onchange = (e: any) => {
+      const file = e.target.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          const newPhoto: ProgressPhoto = {
+            id: Date.now().toString(),
+            date: new Date().toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' }),
+            label: `Semana ${photos.length + 1}`,
+            img: event.target?.result as string
+          };
+          setPhotos(prev => [newPhoto, ...prev]);
+        };
+        reader.readAsDataURL(file);
+      }
+    };
+    input.click();
+  };
 
   const latestWeight = (() => {
     const today = new Date().toISOString().split('T')[0];
@@ -2493,169 +2583,382 @@ const ProgressScreen = ({ isCoach, clientData }: { isCoach?: boolean; clientData
           </button>
         </div>
         <nav className="flex border-b border-white/10 px-4 gap-8 max-w-7xl mx-auto overflow-x-auto no-scrollbar">
-          <button className="border-b-2 border-primary text-primary pb-3 pt-4 whitespace-nowrap text-sm font-bold">Resumen</button>
-          <button className="border-b-2 border-transparent text-slate-500 pb-3 pt-4 whitespace-nowrap text-sm font-bold">Historial</button>
-          <button className="border-b-2 border-transparent text-slate-500 pb-3 pt-4 whitespace-nowrap text-sm font-bold">Récords</button>
-          <button className="border-b-2 border-transparent text-slate-500 pb-3 pt-4 whitespace-nowrap text-sm font-bold">Fotos</button>
+          {[
+            { id: 'resumen', label: 'Resumen' },
+            { id: 'historial', label: 'Historial' },
+            { id: 'logros', label: 'Logros' },
+            { id: 'fotos', label: 'Fotos' }
+          ].map(tab => (
+            <button 
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id as any)}
+              className={cn(
+                "pb-3 pt-4 whitespace-nowrap text-sm font-bold border-b-2 transition-all",
+                activeTab === tab.id ? "border-primary text-primary" : "border-transparent text-slate-500"
+              )}
+            >
+              {tab.label}
+            </button>
+          ))}
         </nav>
       </header>
 
       <main className="p-4 space-y-6">
-        <div className="grid grid-cols-2 gap-4">
-          <div className="glass-card rounded-xl p-4">
-            <p className="text-slate-400 text-xs font-medium uppercase">Peso Actual</p>
-            <div className="flex items-baseline gap-2 mt-1">
-              <p className="text-2xl font-bold">{latestWeight}</p>
-              <span className="text-red-500 text-xs font-bold">-1.2%</span>
-            </div>
-          </div>
-          <div className="glass-card rounded-xl p-4">
-            <p className="text-slate-400 text-xs font-medium uppercase">Total Récords</p>
-            <div className="flex items-baseline gap-2 mt-1">
-              <p className="text-2xl font-bold">48</p>
-              <span className="text-primary text-xs font-bold">+5</span>
-            </div>
-          </div>
-        </div>
-
-        <section className="glass-panel rounded-xl p-6">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-lg font-bold">Progreso de Peso</h2>
-            <div className="flex gap-2">
-              {['1M', '3M', '1Y'].map((r) => (
-                <button 
-                  key={r}
-                  onClick={() => setRange(r)}
-                  className={cn(
-                    "px-3 py-1 rounded-full text-[10px] font-bold transition-colors",
-                    range === r ? "bg-primary text-bg-dark" : "bg-white/10 text-white"
-                  )}
-                >
-                  {r}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="h-48 flex items-end justify-between gap-2">
-            {[80, 75, 78, 72, 70, 68, 65, 62].map((h, i) => (
-              <div key={i} className="flex-1 bg-primary/20 rounded-t-sm relative group">
-                <div 
-                  className={cn("absolute bottom-0 w-full rounded-t-sm transition-all duration-500", i === 7 ? "bg-primary" : "bg-primary/40")} 
-                  style={{ height: `${range === '1M' ? h : h * 0.8}%` }} 
-                />
-                {i === 7 && <div className="absolute -top-6 left-1/2 -translate-x-1/2 text-[10px] font-bold text-primary neon-text">{isCoach ? clientData?.weight?.split(' ')[0] : '82.5'}</div>}
-              </div>
-            ))}
-          </div>
-          <div className="flex justify-between mt-4 text-[10px] font-medium text-slate-500 uppercase tracking-widest">
-            <span>{range === '1M' ? 'Sem 1' : 'Ene'}</span>
-            <span>{range === '1M' ? 'Sem 4' : 'Jun'}</span>
-            <span>Actual</span>
-          </div>
-        </section>
-
-        <section className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-bold">Galería de Evolución</h2>
-            <button className="text-primary text-sm font-bold flex items-center gap-1">
-              {isCoach ? 'Gestionar' : 'Añadir'} <Camera className="size-4" />
-            </button>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            {[
-              { date: 'Jan 12, 2024', label: 'Inicio', img: 'https://picsum.photos/seed/p1/300/400' },
-              { date: 'Feb 05, 2024', label: 'Semana 4', img: 'https://picsum.photos/seed/p2/300/400' },
-            ].map((photo, i) => (
-              <div key={i} className="relative aspect-[3/4] rounded-xl overflow-hidden border border-white/10">
-                <img src={photo.img} className="w-full h-full object-cover grayscale" alt="Progress" />
-                <div className="absolute bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-black/80 to-transparent">
-                  <p className="text-white text-xs font-bold">{photo.date}</p>
-                  <p className="text-primary text-[10px]">{photo.label}</p>
+        {activeTab === 'resumen' && (
+          <>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="glass-card rounded-xl p-4">
+                <p className="text-slate-400 text-xs font-medium uppercase">Peso Actual</p>
+                <div className="flex items-baseline gap-2 mt-1">
+                  <p className="text-2xl font-bold">{latestWeight}</p>
+                  <span className="text-red-500 text-xs font-bold">-1.2%</span>
                 </div>
               </div>
-            ))}
-            {!isCoach && (
-              <div className="aspect-[3/4] rounded-xl border-2 border-dashed border-white/10 flex flex-col items-center justify-center text-slate-500 hover:border-primary hover:text-primary transition-all cursor-pointer">
-                <PlusCircle className="size-8 mb-2" />
-                <span className="text-xs font-bold uppercase tracking-wider">Subir Nueva</span>
+              <div className="glass-card rounded-xl p-4">
+                <p className="text-slate-400 text-xs font-medium uppercase">Grasa Corp.</p>
+                <div className="flex items-baseline gap-2 mt-1">
+                  <p className="text-2xl font-bold">{isCoach ? clientData?.bodyFat : '18.4%'}</p>
+                  <span className="text-primary text-xs font-bold">-0.5%</span>
+                </div>
               </div>
-            )}
+            </div>
+
+            <section className="glass-panel rounded-xl p-6">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-lg font-bold">Progreso de Peso</h2>
+                <div className="flex gap-2">
+                  {['1M', '3M', '1Y'].map((r) => (
+                    <button 
+                      key={r}
+                      onClick={() => setRange(r)}
+                      className={cn(
+                        "px-3 py-1 rounded-full text-[10px] font-bold transition-colors",
+                        range === r ? "bg-primary text-bg-dark" : "bg-white/10 text-white"
+                      )}
+                    >
+                      {r}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="h-48 flex items-end justify-between gap-2">
+                {[80, 75, 78, 72, 70, 68, 65, 62].map((h, i) => (
+                  <div key={i} className="flex-1 bg-primary/20 rounded-t-sm relative group">
+                    <div 
+                      className={cn("absolute bottom-0 w-full rounded-t-sm transition-all duration-500", i === 7 ? "bg-primary" : "bg-primary/40")} 
+                      style={{ height: `${range === '1M' ? h : h * 0.8}%` }} 
+                    />
+                    {i === 7 && <div className="absolute -top-6 left-1/2 -translate-x-1/2 text-[10px] font-bold text-primary neon-text">{latestWeight.split(' ')[0]}</div>}
+                  </div>
+                ))}
+              </div>
+              <div className="flex justify-between mt-4 text-[10px] font-medium text-slate-500 uppercase tracking-widest">
+                <span>{range === '1M' ? 'Sem 1' : 'Ene'}</span>
+                <span>{range === '1M' ? 'Sem 4' : 'Jun'}</span>
+                <span>Actual</span>
+              </div>
+            </section>
+          </>
+        )}
+
+        {activeTab === 'logros' && (
+          <div className="grid grid-cols-2 gap-4">
+            {achievements.map((achievement) => (
+              <div 
+                key={achievement.id}
+                className={cn(
+                  "glass-card rounded-2xl p-4 flex flex-col items-center text-center gap-2 border-2 transition-all",
+                  achievement.completed ? "border-primary/20 bg-primary/5" : "border-white/5 opacity-40 grayscale"
+                )}
+              >
+                <div className={cn(
+                  "p-3 rounded-full mb-1",
+                  achievement.completed ? "bg-primary text-bg-dark" : "bg-white/10 text-slate-400"
+                )}>
+                  {achievement.icon === 'Dumbbell' && <Dumbbell className="size-6" />}
+                  {achievement.icon === 'Flame' && <Flame className="size-6" />}
+                  {achievement.icon === 'Droplets' && <Droplets className="size-6" />}
+                  {achievement.icon === 'Sun' && <Sun className="size-6" />}
+                  {achievement.icon === 'Sword' && <Sword className="size-6" />}
+                  {achievement.icon === 'Utensils' && <Utensils className="size-6" />}
+                  {achievement.icon === 'Camera' && <Camera className="size-6" />}
+                  {achievement.icon === 'Trophy' && <Trophy className="size-6" />}
+                  {achievement.icon === 'Moon' && <Moon className="size-6" />}
+                  {achievement.icon === 'Footprints' && <Footprints className="size-6" />}
+                </div>
+                <h4 className="font-bold text-sm leading-tight">{achievement.title}</h4>
+                <p className="text-[10px] text-slate-400 leading-tight">{achievement.description}</p>
+              </div>
+            ))}
           </div>
-        </section>
+        )}
+
+        {activeTab === 'fotos' && (
+          <section className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-xl font-bold">Galería de Evolución</h2>
+              <button 
+                onClick={handleAddPhoto}
+                className="text-primary text-sm font-bold flex items-center gap-1 bg-primary/10 px-3 py-1.5 rounded-lg"
+              >
+                {isCoach ? 'Subir para Cliente' : 'Añadir Foto'} <Camera className="size-4" />
+              </button>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              {photos.map((photo) => (
+                <div key={photo.id} className="relative aspect-[3/4] rounded-xl overflow-hidden border border-white/10 group">
+                  <img src={photo.img} className="w-full h-full object-cover transition-transform group-hover:scale-110" alt="Progress" />
+                  <div className="absolute bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-black/90 to-transparent">
+                    <p className="text-white text-xs font-bold">{photo.date}</p>
+                    <p className="text-primary text-[10px] font-bold uppercase tracking-wider">{photo.label}</p>
+                  </div>
+                </div>
+              ))}
+              <button 
+                onClick={handleAddPhoto}
+                className="aspect-[3/4] rounded-xl border-2 border-dashed border-white/10 flex flex-col items-center justify-center text-slate-500 hover:border-primary hover:text-primary transition-all cursor-pointer bg-white/5"
+              >
+                <PlusCircle className="size-8 mb-2" />
+                <span className="text-[10px] font-bold uppercase tracking-widest">Nueva Foto</span>
+              </button>
+            </div>
+          </section>
+        )}
+
+        {activeTab === 'historial' && (
+          <div className="glass-panel rounded-xl p-6 text-center py-12">
+            <TrendingUp className="size-12 text-slate-600 mx-auto mb-4" />
+            <h3 className="text-lg font-bold text-slate-400">Próximamente</h3>
+            <p className="text-sm text-slate-500 mt-2">Estamos preparando el historial detallado de tus métricas.</p>
+          </div>
+        )}
       </main>
     </div>
   );
 };
 
-const ProfileScreen = ({ isCoach, clientData, onLogout }: { isCoach?: boolean; clientData?: Client | null; onLogout: () => void }) => {
+const ProfileScreen = ({ userRole, clientData, coachData, onLogout }: { userRole: 'admin' | 'client' | null; clientData: Client | null; coachData: Coach | null; onLogout: () => void }) => {
+  const [isEditing, setIsEditing] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [assignedCoachId, setAssignedCoachId] = useState(clientData?.assignedCoachId || '');
+
+  const isViewingClient = userRole === 'admin' && clientData !== null;
+  const isCoachSelf = userRole === 'admin' && clientData === null;
+
+  const [editedData, setEditedData] = useState({
+    name: isViewingClient ? clientData?.name || '' : (isCoachSelf ? coachData?.name || '' : 'Sarah Jenkins'),
+    img: isViewingClient ? clientData?.img || '' : (isCoachSelf ? coachData?.img || '' : 'https://picsum.photos/seed/sarah/200/200')
+  });
+
+  const handleImageUpload = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.onchange = (e: any) => {
+      const file = e.target.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          setEditedData(prev => ({ ...prev, img: event.target?.result as string }));
+        };
+        reader.readAsDataURL(file);
+      }
+    };
+    input.click();
+  };
+
+  const latestWeight = (() => {
+    if (isCoachSelf) return null;
+    const today = new Date().toISOString().split('T')[0];
+    const saved = localStorage.getItem(`dailyLog_${clientData?.id || 'default'}_${today}`);
+    if (saved) {
+      const log = JSON.parse(saved);
+      if (log.weight) return `${log.weight} kg`;
+    }
+    return isViewingClient ? clientData?.weight : '64.2 kg';
+  })();
+
   return (
     <div className="min-h-screen bg-bg-dark text-white pb-32">
       <header className="flex items-center p-4 justify-between border-b border-white/10 sticky top-0 z-10 bg-bg-dark/80 backdrop-blur-md">
         <h2 className="text-lg font-bold tracking-tight">
-          {isCoach ? `Perfil: ${clientData?.name}` : 'Mi Perfil'}
+          {isViewingClient ? `Perfil: ${clientData?.name}` : (isCoachSelf ? 'Mi Perfil (Coach)' : 'Mi Perfil')}
         </h2>
-        <button className="p-2 rounded-full hover:bg-white/10 transition-colors">
-          <MoreVertical className="size-6" />
+        <button 
+          onClick={() => setIsEditing(!isEditing)}
+          className="p-2 rounded-full hover:bg-white/10 transition-colors text-primary font-bold text-sm"
+        >
+          {isEditing ? 'Guardar' : 'Editar'}
         </button>
       </header>
 
       <main className="p-6">
         <div className="flex flex-col items-center gap-6 mb-8">
-          <div className="relative">
-            <div className="size-32 rounded-full border-4 border-primary overflow-hidden">
-              <img src={isCoach ? clientData?.img : "https://picsum.photos/seed/sarah/200/200"} className="w-full h-full object-cover" alt="Profile" />
+          <div className="relative group">
+            <div className="size-32 rounded-full border-4 border-primary overflow-hidden relative">
+              <img src={editedData.img} className="w-full h-full object-cover" alt="Profile" />
+              {isEditing && (
+                <button 
+                  onClick={handleImageUpload}
+                  className="absolute inset-0 bg-black/60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                >
+                  <Camera className="size-8 text-white" />
+                </button>
+              )}
             </div>
             <div className="absolute bottom-1 right-1 bg-primary text-bg-dark rounded-full p-1 border-2 border-bg-dark">
               <Verified className="size-4" />
             </div>
           </div>
-          <div className="text-center">
-            <h3 className="text-2xl font-bold tracking-tight">{isCoach ? clientData?.name : 'Sarah Jenkins'}</h3>
+          <div className="text-center w-full">
+            {isEditing ? (
+              <input 
+                type="text"
+                value={editedData.name}
+                onChange={(e) => setEditedData(prev => ({ ...prev, name: e.target.value }))}
+                className="bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-2xl font-bold text-center w-full focus:ring-2 focus:ring-primary outline-none"
+              />
+            ) : (
+              <h3 className="text-2xl font-bold tracking-tight">{editedData.name}</h3>
+            )}
             <div className="flex items-center gap-2 mt-1 justify-center">
               <span className="size-2 rounded-full bg-primary neon-text"></span>
               <p className="text-slate-400 text-xs font-medium uppercase tracking-widest">
-                {clientData?.active ? 'ACTIVA' : 'EN PAUSA'} • RACHA DE 8 MESES
+                {isCoachSelf ? 'ENTRENADOR ÉLITE' : (clientData?.active || userRole === 'client' ? 'ACTIVA' : 'EN PAUSA')} • RACHA DE 8 MESES
               </p>
             </div>
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-3 mb-8">
-          <div className="glass-card rounded-xl p-4">
-            <p className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">Peso</p>
-            <p className="text-xl font-bold">{isCoach ? clientData?.weight : '64.2 kg'}</p>
+        {!isCoachSelf && (
+          <div className="grid grid-cols-2 gap-3 mb-8">
+            <div className="glass-card rounded-xl p-4">
+              <p className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">Peso Actual</p>
+              <p className="text-xl font-bold">{latestWeight}</p>
+            </div>
+            <div className="glass-card rounded-xl p-4">
+              <p className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">Grasa Corporal</p>
+              <p className="text-xl font-bold">{isViewingClient ? clientData?.bodyFat : '21.4%'}</p>
+            </div>
           </div>
-          <div className="glass-card rounded-xl p-4">
-            <p className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">Grasa Corporal</p>
-            <p className="text-xl font-bold">{isCoach ? clientData?.bodyFat : '21.4%'}</p>
-          </div>
-        </div>
+        )}
 
         <div className="space-y-3">
-          <button className="w-full flex items-center justify-between p-4 glass-card rounded-xl group transition-all hover:border-primary/40">
+          {isViewingClient && (
+            <div className="glass-card rounded-xl p-4 space-y-3">
+              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Asignación de Entrenador</p>
+              <select 
+                value={assignedCoachId}
+                onChange={(e) => setAssignedCoachId(e.target.value)}
+                className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary outline-none"
+              >
+                <option value="" disabled>Seleccionar Entrenador</option>
+                {coaches.map(c => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+              <p className="text-[10px] text-slate-500 italic">Como administrador, puedes reasignar este cliente a otro coach.</p>
+            </div>
+          )}
+
+          <button 
+            onClick={() => setShowSettings(true)}
+            className="w-full flex items-center justify-between p-4 glass-card rounded-xl group transition-all hover:border-primary/40"
+          >
             <div className="flex items-center gap-3">
               <Settings className="size-5 text-slate-400" />
-              <span className="font-semibold">{isCoach ? 'Ajustes del Cliente' : 'Ajustes de cuenta'}</span>
+              <span className="font-semibold">{isViewingClient ? 'Ajustes del Cliente' : 'Ajustes de cuenta'}</span>
             </div>
             <ChevronRight className="size-5 text-slate-400" />
           </button>
-          <button className="w-full flex items-center justify-between p-4 glass-card rounded-xl group transition-all hover:border-primary/40">
-            <div className="flex items-center gap-3">
-              <Users className="size-5 text-slate-400" />
-              <span className="font-semibold">{isCoach ? 'Historial de Pagos' : 'Soporte con mi entrenador'}</span>
-            </div>
-            <ChevronRight className="size-5 text-slate-400" />
+          
+          <div className="space-y-2">
+            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Soporte Directo</p>
+            {coaches.map((coach, i) => (
+              <button 
+                key={i}
+                onClick={() => {
+                  const message = encodeURIComponent(`Hola ${coach.name}, necesito soporte con mi plan.`);
+                  window.open(`https://wa.me/${coach.phone}?text=${message}`, '_blank');
+                }}
+                className="w-full flex items-center justify-between p-4 glass-card rounded-xl group transition-all hover:border-primary/40"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="size-8 rounded-full bg-green-500/20 flex items-center justify-center">
+                    <MessageCircle className="size-4 text-green-500" />
+                  </div>
+                  <div className="text-left">
+                    <span className="font-semibold block text-sm">Soporte con {coach.name}</span>
+                    <span className="text-[10px] text-slate-500">WhatsApp Directo</span>
+                  </div>
+                </div>
+                <ChevronRight className="size-5 text-slate-400" />
+              </button>
+            ))}
+          </div>
+
+          <button 
+            onClick={onLogout}
+            className="w-full flex items-center justify-center p-4 mt-6 text-red-500 font-bold border border-red-500/20 rounded-xl hover:bg-red-500/10 transition-colors"
+          >
+            <LogOut className="size-5 mr-2" /> Cerrar sesión
           </button>
-          {!isCoach && (
-            <button 
-              onClick={onLogout}
-              className="w-full flex items-center justify-center p-4 mt-4 text-red-500 font-bold border border-red-500/20 rounded-xl hover:bg-red-500/10 transition-colors"
-            >
-              <LogOut className="size-5 mr-2" /> Cerrar sesión
-            </button>
-          )}
         </div>
       </main>
+
+      <AnimatePresence>
+        {showSettings && (
+          <motion.div 
+            initial={{ opacity: 0, y: 100 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 100 }}
+            className="fixed inset-0 z-[100] bg-bg-dark flex flex-col"
+          >
+            <header className="flex items-center p-4 border-b border-white/10">
+              <button onClick={() => setShowSettings(false)} className="p-2">
+                <ChevronLeft className="size-6" />
+              </button>
+              <h2 className="text-lg font-bold ml-2">Ajustes de Cuenta</h2>
+            </header>
+            <div className="p-6 space-y-6">
+              <div className="space-y-4">
+                <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest">Notificaciones</h3>
+                <div className="flex items-center justify-between p-4 glass-card rounded-xl">
+                  <span>Notificaciones Push</span>
+                  <div className="w-12 h-6 bg-primary rounded-full relative">
+                    <div className="absolute right-1 top-1 size-4 bg-bg-dark rounded-full"></div>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between p-4 glass-card rounded-xl">
+                  <span>Recordatorios de Agua</span>
+                  <div className="w-12 h-6 bg-primary rounded-full relative">
+                    <div className="absolute right-1 top-1 size-4 bg-bg-dark rounded-full"></div>
+                  </div>
+                </div>
+              </div>
+              <div className="space-y-4">
+                <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest">Seguridad</h3>
+                <button className="w-full flex items-center justify-between p-4 glass-card rounded-xl">
+                  <span>Cambiar Contraseña</span>
+                  <ChevronRight className="size-5 text-slate-400" />
+                </button>
+                <button className="w-full flex items-center justify-between p-4 glass-card rounded-xl">
+                  <span>Privacidad de Datos</span>
+                  <ChevronRight className="size-5 text-slate-400" />
+                </button>
+              </div>
+              <div className="pt-6">
+                <button 
+                  onClick={() => setShowSettings(false)}
+                  className="w-full py-4 bg-primary text-bg-dark font-bold rounded-xl"
+                >
+                  Guardar Cambios
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
@@ -2664,12 +2967,14 @@ export default function App() {
   const [screen, setScreen] = useState<Screen>('welcome');
   const [userRole, setUserRole] = useState<'admin' | 'client' | null>(null);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
+  const [loggedInCoach, setLoggedInCoach] = useState<Coach | null>(null);
 
   const showNav = !['onboarding', 'login', 'welcome', 'register'].includes(screen);
 
   const handleLogin = (role: 'admin' | 'client') => {
     setUserRole(role);
     if (role === 'admin') {
+      setLoggedInCoach(coaches[0]); // Default to first coach for demo
       setScreen('dashboard');
     } else {
       setScreen('home');
@@ -2749,6 +3054,7 @@ export default function App() {
           {screen === 'home' && <HomeScreen isCoach={isCoachViewing} clientData={selectedClient || (userRole === 'client' ? clients[0] : null)} />}
           {screen === 'dashboard' && (
             <DashboardScreen 
+              coach={loggedInCoach}
               onAddClient={() => setScreen('register')} 
               onSelectClient={handleSelectClient}
             />
@@ -2759,13 +3065,15 @@ export default function App() {
           {screen === 'progress' && <ProgressScreen isCoach={isCoachViewing} clientData={selectedClient} />}
           {screen === 'profile' && (
             <ProfileScreen 
-              isCoach={isCoachViewing}
+              userRole={userRole}
               clientData={selectedClient}
+              coachData={loggedInCoach}
               onLogout={() => {
                 setUserRole(null);
                 setSelectedClient(null);
+                setLoggedInCoach(null);
                 setScreen('welcome');
-              }} 
+              }}
             />
           )}
         </motion.div>

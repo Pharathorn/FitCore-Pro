@@ -54,7 +54,9 @@ import {
   Trophy,
   Moon,
   Footprints,
-  MessageCircle
+  MessageCircle,
+  Search,
+  Filter
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { GoogleGenAI, Type } from "@google/genai";
@@ -109,6 +111,7 @@ interface Client {
   program: string;
   status: string;
   active: boolean;
+  isDeleted?: boolean;
   img: string;
   weight?: string;
   bodyFat?: string;
@@ -407,7 +410,10 @@ const HomeScreen = ({ clientData, isCoach }: { clientData: Client | null; isCoac
 
 // --- Screens ---
 
-const DashboardScreen = ({ coach, onAddClient, onSelectClient }: { coach: Coach | null; onAddClient: () => void; onSelectClient: (client: Client) => void }) => {
+const DashboardScreen = ({ coach, clients, onAddClient, onSelectClient }: { coach: Coach | null; clients: Client[]; onAddClient: () => void; onSelectClient: (client: Client) => void }) => {
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
+
   const engagementData = [
     { day: 'MON', value: 65 },
     { day: 'TUE', value: 85 },
@@ -417,6 +423,18 @@ const DashboardScreen = ({ coach, onAddClient, onSelectClient }: { coach: Coach 
     { day: 'SAT', value: 30 },
     { day: 'SUN', value: 20 },
   ];
+
+  const filteredClients = clients.filter(c => {
+    if (c.isDeleted) return false;
+    
+    const matchesSearch = c.name.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesStatus = 
+      statusFilter === 'all' ? true :
+      statusFilter === 'active' ? c.active :
+      !c.active;
+
+    return matchesSearch && matchesStatus;
+  });
 
   return (
     <div className="min-h-screen bg-bg-dark text-white pb-24">
@@ -436,7 +454,7 @@ const DashboardScreen = ({ coach, onAddClient, onSelectClient }: { coach: Coach 
       <div className="flex flex-wrap gap-4 p-4">
         <div className="flex-1 min-w-[140px] glass-card rounded-xl p-4">
           <p className="text-slate-400 text-xs font-medium uppercase tracking-wider">Clientes Totales</p>
-          <p className="text-2xl font-bold mt-1">124</p>
+          <p className="text-2xl font-bold mt-1">{clients.filter(c => !c.isDeleted).length}</p>
           <div className="flex items-center gap-1 mt-1 text-primary">
             <TrendingUp className="size-3" />
             <span className="text-xs font-bold">+5.2%</span>
@@ -444,7 +462,7 @@ const DashboardScreen = ({ coach, onAddClient, onSelectClient }: { coach: Coach 
         </div>
         <div className="flex-1 min-w-[140px] glass-card rounded-xl p-4">
           <p className="text-slate-400 text-xs font-medium uppercase tracking-wider">Activos Ahora</p>
-          <p className="text-2xl font-bold mt-1">18</p>
+          <p className="text-2xl font-bold mt-1">{clients.filter(c => !c.isDeleted && c.active).length}</p>
           <div className="flex items-center gap-1 mt-1 text-red-500">
             <TrendingDown className="size-3" />
             <span className="text-xs font-bold">-2.1%</span>
@@ -480,34 +498,110 @@ const DashboardScreen = ({ coach, onAddClient, onSelectClient }: { coach: Coach 
         </div>
       </section>
 
-      <section className="p-4">
-        <div className="flex justify-between items-center mb-4">
-          <h3 className="text-[22px] font-bold tracking-tight">Clientes Activos</h3>
-          <button className="text-primary text-sm font-semibold">Ver Todos</button>
+      <section className="p-4 space-y-4">
+        <div className="flex flex-col gap-4">
+          <div className="flex justify-between items-center">
+            <h3 className="text-[22px] font-bold tracking-tight">Mis Clientes</h3>
+            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest bg-white/5 px-2 py-1 rounded-md">
+              {filteredClients.length} Resultados
+            </span>
+          </div>
+
+          <div className="space-y-3">
+            {/* Search Bar */}
+            <div className="relative">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 size-4 text-slate-500" />
+              <input 
+                type="text"
+                placeholder="Buscar por nombre..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full h-12 bg-white/5 border border-white/10 rounded-xl pl-11 pr-4 text-sm focus:ring-2 focus:ring-primary outline-none transition-all"
+              />
+            </div>
+
+            {/* Filters */}
+            <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+              <button 
+                onClick={() => setStatusFilter('all')}
+                className={cn(
+                  "px-4 py-2 rounded-full text-[10px] font-bold uppercase tracking-widest transition-all whitespace-nowrap",
+                  statusFilter === 'all' ? "bg-primary text-bg-dark" : "bg-white/5 text-slate-400 border border-white/10"
+                )}
+              >
+                Todos
+              </button>
+              <button 
+                onClick={() => setStatusFilter('active')}
+                className={cn(
+                  "px-4 py-2 rounded-full text-[10px] font-bold uppercase tracking-widest transition-all whitespace-nowrap",
+                  statusFilter === 'active' ? "bg-primary text-bg-dark" : "bg-white/5 text-slate-400 border border-white/10"
+                )}
+              >
+                Activos
+              </button>
+              <button 
+                onClick={() => setStatusFilter('inactive')}
+                className={cn(
+                  "px-4 py-2 rounded-full text-[10px] font-bold uppercase tracking-widest transition-all whitespace-nowrap",
+                  statusFilter === 'inactive' ? "bg-primary text-bg-dark" : "bg-white/5 text-slate-400 border border-white/10"
+                )}
+              >
+                Inactivos
+              </button>
+            </div>
+          </div>
         </div>
+
         <div className="space-y-3">
-          {clients.map((client, i) => (
-            <button 
-              key={i} 
-              onClick={() => onSelectClient(client)}
-              className="w-full flex items-center gap-4 p-4 glass-card rounded-xl text-left transition-all hover:bg-white/5 active:scale-[0.98]"
-            >
-              <div className="size-12 rounded-full overflow-hidden border-2 border-primary/20">
-                <img src={client.img} className="w-full h-full object-cover" alt={client.name} />
+          {filteredClients.length > 0 ? (
+            filteredClients.map((client, i) => (
+              <button 
+                key={i} 
+                onClick={() => onSelectClient(client)}
+                className={cn(
+                  "w-full flex items-center gap-4 p-4 glass-card rounded-xl text-left transition-all hover:bg-white/5 active:scale-[0.98]",
+                  !client.active && "opacity-60 grayscale-[0.5]"
+                )}
+              >
+                <div className="size-12 rounded-full overflow-hidden border-2 border-primary/20">
+                  <img src={client.img} className="w-full h-full object-cover" alt={client.name} />
+                </div>
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <h4 className="font-bold text-sm">{client.name}</h4>
+                    {!client.active && (
+                      <span className="text-[8px] bg-slate-500 text-white px-1.5 py-0.5 rounded-full font-bold uppercase">Inactivo</span>
+                    )}
+                  </div>
+                  <p className="text-slate-400 text-xs mt-0.5">{client.program}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs font-bold">{client.status}</p>
+                  <p className={cn("text-[10px] font-medium uppercase tracking-tight", client.active ? "text-primary" : "text-slate-500")}>
+                    {client.active ? 'Activo' : 'Descanso'}
+                  </p>
+                </div>
+                <ChevronRight className="size-5 text-slate-400" />
+              </button>
+            ))
+          ) : (
+            <div className="py-12 flex flex-col items-center justify-center text-center gap-4 glass-card rounded-2xl border-dashed border-white/10">
+              <div className="size-16 rounded-full bg-white/5 flex items-center justify-center">
+                <Search className="size-8 text-slate-600" />
               </div>
-              <div className="flex-1">
-                <h4 className="font-bold text-sm">{client.name}</h4>
-                <p className="text-slate-400 text-xs mt-0.5">{client.program}</p>
+              <div>
+                <p className="text-slate-400 font-medium">No se encontraron clientes</p>
+                <p className="text-slate-600 text-xs mt-1">Prueba con otros filtros o términos de búsqueda</p>
               </div>
-              <div className="text-right">
-                <p className="text-xs font-bold">{client.status}</p>
-                <p className={cn("text-[10px] font-medium uppercase tracking-tight", client.active ? "text-primary" : "text-slate-500")}>
-                  {client.active ? 'Activo' : 'Descanso'}
-                </p>
-              </div>
-              <ChevronRight className="size-5 text-slate-400" />
-            </button>
-          ))}
+              <button 
+                onClick={() => { setSearchQuery(''); setStatusFilter('all'); }}
+                className="text-primary text-xs font-bold uppercase tracking-widest hover:underline"
+              >
+                Limpiar filtros
+              </button>
+            </div>
+          )}
         </div>
       </section>
 
@@ -839,7 +933,7 @@ const OnboardingScreen = ({ onComplete }: { onComplete: () => void }) => {
   );
 };
 
-const LoginScreen = ({ onLogin }: { onLogin: (role: 'admin' | 'client') => void }) => {
+const LoginScreen = ({ onLogin }: { onLogin: (role: 'admin' | 'client', email?: string) => string | null }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -856,7 +950,10 @@ const LoginScreen = ({ onLogin }: { onLogin: (role: 'admin' | 'client') => void 
     const user = demoAccounts.find(u => u.email === email && u.password === password);
 
     if (user) {
-      onLogin(user.role);
+      const loginError = onLogin(user.role, email);
+      if (loginError) {
+        setError(loginError);
+      }
     } else {
       setError('Credenciales incorrectas. Inténtalo de nuevo.');
     }
@@ -2737,10 +2834,11 @@ const ProgressScreen = ({ isCoach, clientData }: { isCoach?: boolean; clientData
   );
 };
 
-const ProfileScreen = ({ userRole, clientData, coachData, onLogout }: { userRole: 'admin' | 'client' | null; clientData: Client | null; coachData: Coach | null; onLogout: () => void }) => {
+const ProfileScreen = ({ userRole, clientData, coachData, onUpdateClient, onLogout }: { userRole: 'admin' | 'client' | null; clientData: Client | null; coachData: Coach | null; onUpdateClient: (id: string, updates: Partial<Client>) => void; onLogout: () => void }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [assignedCoachId, setAssignedCoachId] = useState(clientData?.assignedCoachId || '');
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const isViewingClient = userRole === 'admin' && clientData !== null;
   const isCoachSelf = userRole === 'admin' && clientData === null;
@@ -2845,19 +2943,53 @@ const ProfileScreen = ({ userRole, clientData, coachData, onLogout }: { userRole
 
         <div className="space-y-3">
           {isViewingClient && (
-            <div className="glass-card rounded-xl p-4 space-y-3">
-              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Asignación de Entrenador</p>
-              <select 
-                value={assignedCoachId}
-                onChange={(e) => setAssignedCoachId(e.target.value)}
-                className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary outline-none"
-              >
-                <option value="" disabled>Seleccionar Entrenador</option>
-                {coaches.map(c => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
-              <p className="text-[10px] text-slate-500 italic">Como administrador, puedes reasignar este cliente a otro coach.</p>
+            <div className="space-y-3">
+              <div className="glass-card rounded-xl p-4 space-y-3">
+                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Asignación de Entrenador</p>
+                <select 
+                  value={assignedCoachId}
+                  onChange={(e) => {
+                    setAssignedCoachId(e.target.value);
+                    if (clientData) onUpdateClient(clientData.id, { assignedCoachId: e.target.value });
+                  }}
+                  className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary outline-none"
+                >
+                  <option value="" disabled>Seleccionar Entrenador</option>
+                  {coaches.map(c => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+                <p className="text-[10px] text-slate-500 italic">Como administrador, puedes reasignar este cliente a otro coach.</p>
+              </div>
+
+              <div className="glass-card rounded-xl p-4 space-y-4">
+                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Gestión de Cuenta</p>
+                <div className="flex flex-col gap-2">
+                  <button 
+                    onClick={() => {
+                      if (clientData) onUpdateClient(clientData.id, { active: !clientData.active });
+                    }}
+                    className={cn(
+                      "w-full py-3 rounded-lg font-bold text-sm transition-all flex items-center justify-center gap-2",
+                      clientData?.active 
+                        ? "bg-amber-500/10 text-amber-500 border border-amber-500/20 hover:bg-amber-500/20" 
+                        : "bg-green-500/10 text-green-500 border border-green-500/20 hover:bg-green-500/20"
+                    )}
+                  >
+                    {clientData?.active ? 'Desactivar Cuenta' : 'Activar Cuenta'}
+                  </button>
+                  <button 
+                    onClick={() => setShowDeleteConfirm(true)}
+                    className="w-full py-3 bg-red-500/10 text-red-500 border border-red-500/20 rounded-lg font-bold text-sm hover:bg-red-500/20 transition-all flex items-center justify-center gap-2"
+                  >
+                    <Trash2 className="size-4" />
+                    Eliminar Cuenta
+                  </button>
+                </div>
+                <p className="text-[10px] text-slate-500 italic">
+                  Las cuentas desactivadas o eliminadas no podrán acceder a la aplicación.
+                </p>
+              </div>
             </div>
           )}
 
@@ -2959,6 +3091,59 @@ const ProfileScreen = ({ userRole, clientData, coachData, onLogout }: { userRole
           </motion.div>
         )}
       </AnimatePresence>
+
+      <AnimatePresence>
+        {showDeleteConfirm && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-6">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+              onClick={() => setShowDeleteConfirm(false)}
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              className="relative w-full max-w-sm glass-panel p-6 rounded-2xl border border-white/10 shadow-2xl"
+            >
+              <div className="flex flex-col items-center text-center gap-4">
+                <div className="size-16 rounded-full bg-red-500/20 flex items-center justify-center">
+                  <Trash2 className="size-8 text-red-500" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold">¿Eliminar cuenta?</h3>
+                  <p className="text-slate-400 text-sm mt-2">
+                    Esta acción marcará la cuenta de <span className="text-white font-bold">{clientData?.name}</span> como eliminada. No podrá volver a entrar.
+                  </p>
+                </div>
+                <div className="flex flex-col w-full gap-2 mt-2">
+                  <button 
+                    onClick={() => {
+                      if (clientData) {
+                        onUpdateClient(clientData.id, { isDeleted: true });
+                        setShowDeleteConfirm(false);
+                        // Go back to dashboard
+                        onLogout(); 
+                      }
+                    }}
+                    className="w-full py-4 bg-red-500 text-white font-bold rounded-xl"
+                  >
+                    Sí, Eliminar Cuenta
+                  </button>
+                  <button 
+                    onClick={() => setShowDeleteConfirm(false)}
+                    className="w-full py-4 bg-white/5 text-white font-bold rounded-xl"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
@@ -2968,16 +3153,38 @@ export default function App() {
   const [userRole, setUserRole] = useState<'admin' | 'client' | null>(null);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [loggedInCoach, setLoggedInCoach] = useState<Coach | null>(null);
+  const [clientsList, setClientsList] = useState<Client[]>(clients);
 
   const showNav = !['onboarding', 'login', 'welcome', 'register'].includes(screen);
 
-  const handleLogin = (role: 'admin' | 'client') => {
+  const handleLogin = (role: 'admin' | 'client', email?: string) => {
+    if (role === 'client' && email) {
+      // Find client by email (simulated)
+      const client = clientsList.find(c => c.id === '1'); 
+      if (client && (client.isDeleted)) {
+        return 'Tu cuenta ha sido eliminada. Contacta con tu entrenador.';
+      }
+      if (client && !client.active) {
+        return 'Tu cuenta está desactivada temporalmente. Contacta con tu entrenador.';
+      }
+    }
+
     setUserRole(role);
     if (role === 'admin') {
       setLoggedInCoach(coaches[0]); // Default to first coach for demo
       setScreen('dashboard');
     } else {
       setScreen('home');
+    }
+    return null;
+  };
+
+  const handleUpdateClient = (clientId: string, updates: Partial<Client>) => {
+    setClientsList(prev => prev.map(c => c.id === clientId ? { ...c, ...updates } : c));
+    
+    // If we are updating the currently selected client, update that state too
+    if (selectedClient && selectedClient.id === clientId) {
+      setSelectedClient(prev => prev ? { ...prev, ...updates } : null);
     }
   };
 
@@ -3051,10 +3258,11 @@ export default function App() {
               onLogin={handleLogin} 
             />
           )}
-          {screen === 'home' && <HomeScreen isCoach={isCoachViewing} clientData={selectedClient || (userRole === 'client' ? clients[0] : null)} />}
+          {screen === 'home' && <HomeScreen isCoach={isCoachViewing} clientData={selectedClient || (userRole === 'client' ? clientsList[0] : null)} />}
           {screen === 'dashboard' && (
             <DashboardScreen 
               coach={loggedInCoach}
+              clients={clientsList}
               onAddClient={() => setScreen('register')} 
               onSelectClient={handleSelectClient}
             />
@@ -3068,6 +3276,7 @@ export default function App() {
               userRole={userRole}
               clientData={selectedClient}
               coachData={loggedInCoach}
+              onUpdateClient={handleUpdateClient}
               onLogout={() => {
                 setUserRole(null);
                 setSelectedClient(null);

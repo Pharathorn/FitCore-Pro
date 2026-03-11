@@ -41,7 +41,8 @@ import {
   Flame,
   Menu,
   BarChart3,
-  Camera
+  Camera,
+  Trash2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -65,10 +66,21 @@ function cn(...inputs: ClassValue[]) {
 // --- Types ---
 type Screen = 'dashboard' | 'workout' | 'timer' | 'nutrition' | 'progress' | 'profile' | 'onboarding' | 'login' | 'welcome' | 'register';
 
+interface Client {
+  name: string;
+  program: string;
+  status: string;
+  active: boolean;
+  img: string;
+  weight?: string;
+  bodyFat?: string;
+}
+
 // --- Components ---
 
-const BottomNav = ({ active, onChange }: { active: Screen; onChange: (s: Screen) => void }) => {
+const BottomNav = ({ active, onChange, role }: { active: Screen; onChange: (s: Screen) => void; role: 'admin' | 'client' | null }) => {
   const navItems = [
+    ...(role === 'admin' ? [{ id: 'dashboard', label: 'Panel', icon: LayoutGrid }] : []),
     { id: 'workout', label: 'Entrenar', icon: Dumbbell },
     { id: 'timer', label: 'Cronómetro', icon: TimerIcon },
     { id: 'nutrition', label: 'Nutrición', icon: Utensils },
@@ -99,7 +111,7 @@ const BottomNav = ({ active, onChange }: { active: Screen; onChange: (s: Screen)
 
 // --- Screens ---
 
-const DashboardScreen = () => {
+const DashboardScreen = ({ onAddClient, onSelectClient }: { onAddClient: () => void; onSelectClient: (client: Client) => void }) => {
   const engagementData = [
     { day: 'MON', value: 65 },
     { day: 'TUE', value: 85 },
@@ -110,10 +122,10 @@ const DashboardScreen = () => {
     { day: 'SUN', value: 20 },
   ];
 
-  const clients = [
-    { name: 'Sarah Jenkins', program: 'Powerlifting • Phase 2', status: 'Today', active: true, img: 'https://picsum.photos/seed/sarah/100/100' },
-    { name: 'Marcus Chen', program: 'Hypertrophy • Week 4', status: '2 days ago', active: false, img: 'https://picsum.photos/seed/marcus/100/100' },
-    { name: 'Elena Rodriguez', program: 'Endurance • Advanced', status: 'Yesterday', active: true, img: 'https://picsum.photos/seed/elena/100/100' },
+  const clients: Client[] = [
+    { name: 'Sarah Jenkins', program: 'Powerlifting • Phase 2', status: 'Today', active: true, img: 'https://picsum.photos/seed/sarah/100/100', weight: '64.2 kg', bodyFat: '21.4%' },
+    { name: 'Marcus Chen', program: 'Hypertrophy • Week 4', status: '2 days ago', active: false, img: 'https://picsum.photos/seed/marcus/100/100', weight: '82.5 kg', bodyFat: '15.2%' },
+    { name: 'Elena Rodriguez', program: 'Endurance • Advanced', status: 'Yesterday', active: true, img: 'https://picsum.photos/seed/elena/100/100', weight: '58.0 kg', bodyFat: '18.5%' },
   ];
 
   return (
@@ -123,7 +135,7 @@ const DashboardScreen = () => {
           <img src="https://picsum.photos/seed/coach/100/100" className="w-full h-full object-cover" alt="Coach" />
         </div>
         <div className="ml-3 flex-1">
-          <p className="text-xs text-slate-400 font-medium">Welcome back,</p>
+          <p className="text-xs text-slate-400 font-medium">Panel de Entrenador,</p>
           <h2 className="text-lg font-bold leading-tight tracking-tight">Coach Alex</h2>
         </div>
         <button className="flex size-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
@@ -133,7 +145,7 @@ const DashboardScreen = () => {
 
       <div className="flex flex-wrap gap-4 p-4">
         <div className="flex-1 min-w-[140px] glass-card rounded-xl p-4">
-          <p className="text-slate-400 text-xs font-medium uppercase tracking-wider">Total Clients</p>
+          <p className="text-slate-400 text-xs font-medium uppercase tracking-wider">Clientes Totales</p>
           <p className="text-2xl font-bold mt-1">124</p>
           <div className="flex items-center gap-1 mt-1 text-primary">
             <TrendingUp className="size-3" />
@@ -141,7 +153,7 @@ const DashboardScreen = () => {
           </div>
         </div>
         <div className="flex-1 min-w-[140px] glass-card rounded-xl p-4">
-          <p className="text-slate-400 text-xs font-medium uppercase tracking-wider">Active Now</p>
+          <p className="text-slate-400 text-xs font-medium uppercase tracking-wider">Activos Ahora</p>
           <p className="text-2xl font-bold mt-1">18</p>
           <div className="flex items-center gap-1 mt-1 text-red-500">
             <TrendingDown className="size-3" />
@@ -154,10 +166,10 @@ const DashboardScreen = () => {
         <div className="glass-panel rounded-xl p-4">
           <div className="flex justify-between items-end mb-6">
             <div>
-              <h3 className="text-base font-bold">Weekly Engagement</h3>
-              <p className="text-slate-400 text-xs">Average activity 85%</p>
+              <h3 className="text-base font-bold">Actividad Semanal</h3>
+              <p className="text-slate-400 text-xs">Media de actividad 85%</p>
             </div>
-            <p className="text-primary text-xl font-bold neon-text">High</p>
+            <p className="text-primary text-xl font-bold neon-text">Alta</p>
           </div>
           <div className="h-32 flex items-end justify-between gap-2 px-1">
             {engagementData.map((d) => (
@@ -180,12 +192,16 @@ const DashboardScreen = () => {
 
       <section className="p-4">
         <div className="flex justify-between items-center mb-4">
-          <h3 className="text-[22px] font-bold tracking-tight">Active Clients</h3>
-          <button className="text-primary text-sm font-semibold">View All</button>
+          <h3 className="text-[22px] font-bold tracking-tight">Clientes Activos</h3>
+          <button className="text-primary text-sm font-semibold">Ver Todos</button>
         </div>
         <div className="space-y-3">
           {clients.map((client, i) => (
-            <div key={i} className="flex items-center gap-4 p-4 glass-card rounded-xl">
+            <button 
+              key={i} 
+              onClick={() => onSelectClient(client)}
+              className="w-full flex items-center gap-4 p-4 glass-card rounded-xl text-left transition-all hover:bg-white/5 active:scale-[0.98]"
+            >
               <div className="size-12 rounded-full overflow-hidden border-2 border-primary/20">
                 <img src={client.img} className="w-full h-full object-cover" alt={client.name} />
               </div>
@@ -196,23 +212,27 @@ const DashboardScreen = () => {
               <div className="text-right">
                 <p className="text-xs font-bold">{client.status}</p>
                 <p className={cn("text-[10px] font-medium uppercase tracking-tight", client.active ? "text-primary" : "text-slate-500")}>
-                  {client.active ? 'Active' : 'Rest'}
+                  {client.active ? 'Activo' : 'Descanso'}
                 </p>
               </div>
               <ChevronRight className="size-5 text-slate-400" />
-            </div>
+            </button>
           ))}
         </div>
       </section>
 
-      <button className="fixed bottom-24 right-6 size-14 rounded-full bg-primary text-bg-dark shadow-lg shadow-primary/20 flex items-center justify-center z-30 transition-transform active:scale-95">
-        <Plus className="size-8" />
+      <button 
+        onClick={onAddClient}
+        className="fixed bottom-24 right-6 h-14 px-6 rounded-full bg-primary text-bg-dark shadow-lg shadow-primary/20 flex items-center justify-center gap-2 z-30 transition-transform active:scale-95 hover:scale-105"
+      >
+        <PlusCircle className="size-6" />
+        <span className="font-bold">Nuevo Cliente</span>
       </button>
     </div>
   );
 };
 
-const WelcomeScreen = ({ onLogin, onRegister }: { onLogin: () => void; onRegister: () => void }) => {
+const WelcomeScreen = ({ onLogin }: { onLogin: () => void }) => {
   return (
     <div className="min-h-screen bg-bg-dark text-white flex flex-col items-center justify-center p-6 relative overflow-hidden">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(0,255,102,0.1),transparent_70%)]"></div>
@@ -223,7 +243,7 @@ const WelcomeScreen = ({ onLogin, onRegister }: { onLogin: () => void; onRegiste
         </div>
         
         <h1 className="text-5xl font-black text-center mb-4 tracking-tighter italic">
-          FITCORE <span className="text-primary neon-text">PRO</span>
+          BeFit <span className="text-primary neon-text">PRO</span>
         </h1>
         <p className="text-slate-400 text-center text-lg mb-12 max-w-[280px]">
           Tu transformación física comienza con un plan inteligente.
@@ -232,18 +252,10 @@ const WelcomeScreen = ({ onLogin, onRegister }: { onLogin: () => void; onRegiste
         <div className="w-full space-y-4">
           <button 
             onClick={onLogin}
-            className="w-full h-16 bg-white/5 border border-white/10 text-white font-bold text-lg rounded-2xl hover:bg-white/10 transition-all active:scale-95 flex items-center justify-center gap-3"
+            className="w-full h-16 bg-primary text-bg-dark font-bold text-lg rounded-2xl shadow-xl shadow-primary/20 hover:scale-[1.02] transition-all active:scale-95 flex items-center justify-center gap-3"
           >
             <User className="size-5" />
             Iniciar Sesión
-          </button>
-          
-          <button 
-            onClick={onRegister}
-            className="w-full h-16 bg-primary text-bg-dark font-bold text-lg rounded-2xl shadow-xl shadow-primary/20 hover:scale-[1.02] transition-all active:scale-95 flex items-center justify-center gap-3"
-          >
-            <PlusCircle className="size-5" />
-            Nuevo Cliente
           </button>
         </div>
 
@@ -255,12 +267,17 @@ const WelcomeScreen = ({ onLogin, onRegister }: { onLogin: () => void; onRegiste
   );
 };
 
-const RegisterScreen = ({ onRegister }: { onRegister: () => void }) => {
+const RegisterScreen = ({ onRegister, onBack }: { onRegister: () => void; onBack: () => void }) => {
   return (
     <div className="min-h-screen bg-bg-dark text-white flex flex-col p-6 max-w-md mx-auto w-full">
-      <header className="pt-6 mb-12">
-        <h1 className="text-3xl font-bold mb-2">Crear Cuenta</h1>
-        <p className="text-slate-400">Introduce tus credenciales para empezar</p>
+      <header className="pt-6 mb-12 flex items-center gap-4">
+        <button onClick={onBack} className="p-2 rounded-full hover:bg-white/10 transition-colors">
+          <ArrowLeft className="size-6" />
+        </button>
+        <div>
+          <h1 className="text-3xl font-bold mb-2">Nuevo Cliente</h1>
+          <p className="text-slate-400">Crea una cuenta para tu cliente</p>
+        </div>
       </header>
 
       <form className="space-y-6 flex-1" onSubmit={(e) => { e.preventDefault(); onRegister(); }}>
@@ -532,7 +549,7 @@ const OnboardingScreen = ({ onComplete }: { onComplete: () => void }) => {
   );
 };
 
-const LoginScreen = ({ onLogin, onRegister }: { onLogin: () => void; onRegister: () => void }) => {
+const LoginScreen = ({ onLogin }: { onLogin: (role: 'admin' | 'client') => void }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -542,14 +559,14 @@ const LoginScreen = ({ onLogin, onRegister }: { onLogin: () => void; onRegister:
     setError('');
 
     const demoAccounts = [
-      { email: 'cliente@cliente.com', password: '123' },
-      { email: 'admin@admin.com', password: '123' }
+      { email: 'cliente@cliente.com', password: '123', role: 'client' as const },
+      { email: 'admin@admin.com', password: '123', role: 'admin' as const }
     ];
 
     const user = demoAccounts.find(u => u.email === email && u.password === password);
 
     if (user) {
-      onLogin();
+      onLogin(user.role);
     } else {
       setError('Credenciales incorrectas. Inténtalo de nuevo.');
     }
@@ -611,39 +628,284 @@ const LoginScreen = ({ onLogin, onRegister }: { onLogin: () => void; onRegister:
       </form>
 
       <div className="mt-12 text-center">
-        <p className="text-slate-400 text-sm">
-          ¿No tienes una cuenta? <button onClick={onRegister} className="text-primary font-bold hover:underline">Regístrate</button>
+        <p className="text-slate-400 text-sm italic">
+          Solo el administrador puede crear nuevas cuentas.
         </p>
       </div>
     </div>
   );
 };
 
-const WorkoutScreen = () => {
-  const [sets, setSets] = useState([
-    { id: 1, kg: 185, reps: 8, rpe: 8, completed: true },
-    { id: 2, kg: 185, reps: 0, rpe: 8, completed: false },
+const WorkoutScreen = ({ isCoach, clientData }: { isCoach?: boolean; clientData?: Client | null }) => {
+  const [view, setView] = useState<'days' | 'exercises' | 'detail' | 'summary'>('days');
+  const [selectedDay, setSelectedDay] = useState<any>(null);
+  const [currentExerciseIdx, setCurrentExerciseIdx] = useState(0);
+  const [sets, setSets] = useState<any[]>([]);
+  const [restTime, setRestTime] = useState(0);
+  const [isResting, setIsResting] = useState(false);
+  const [problematicExercises, setProblematicExercises] = useState<number[]>([]);
+  const [showVideoEditor, setShowVideoEditor] = useState(false);
+  const [videoUrl, setVideoUrl] = useState("https://picsum.photos/seed/benchpress/800/450");
+  const [fatigue, setFatigue] = useState(5);
+  const [feedback, setFeedback] = useState("");
+
+  const [workoutDays, setWorkoutDays] = useState([
+    { 
+      id: 1, 
+      title: 'Día 1: Pecho y Tríceps', 
+      subtitle: 'Fase de Hipertrofia • Semana 3',
+      exercises: [
+        { 
+          id: 101, 
+          name: 'Flat Barbell Bench Press', 
+          sets: 3, 
+          reps: '10-12', 
+          rest: 120, 
+          video: "https://picsum.photos/seed/benchpress/800/450",
+          initialSets: [
+            { id: 1, kg: 80, reps: 10, rpe: 8, rir: 2, completed: false },
+            { id: 2, kg: 80, reps: 10, rpe: 8, rir: 2, completed: false },
+            { id: 3, kg: 80, reps: 10, rpe: 8, rir: 2, completed: false },
+          ]
+        },
+        { 
+          id: 102, 
+          name: 'Incline Dumbbell Flyes', 
+          sets: 3, 
+          reps: '12-15', 
+          rest: 90, 
+          video: "https://picsum.photos/seed/flyes/100/100",
+          initialSets: [
+            { id: 1, kg: 18, reps: 12, rpe: 7, rir: 3, completed: false },
+            { id: 2, kg: 18, reps: 12, rpe: 7, rir: 3, completed: false },
+            { id: 3, kg: 18, reps: 12, rpe: 7, rir: 3, completed: false },
+          ]
+        }
+      ]
+    },
+    { id: 2, title: 'Día 2: Espalda y Bíceps', subtitle: 'Fase de Hipertrofia • Semana 3', exercises: [] },
+    { id: 3, title: 'Día 3: Pierna Completa', subtitle: 'Fase de Hipertrofia • Semana 3', exercises: [] },
   ]);
 
+  useEffect(() => {
+    let timer: any;
+    if (isResting && restTime > 0) {
+      timer = setInterval(() => {
+        setRestTime((prev) => {
+          if (prev <= 1) {
+            setIsResting(false);
+            // Simple browser notification simulation
+            if (!isCoach) {
+              const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
+              audio.play().catch(() => {});
+            }
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+    return () => clearInterval(timer);
+  }, [isResting, restTime, isCoach]);
+
+  const startWorkout = (day: any) => {
+    setSelectedDay(day);
+    setCurrentExerciseIdx(0);
+    if (day.exercises.length > 0) {
+      setSets(day.exercises[0].initialSets);
+      setVideoUrl(day.exercises[0].video);
+      setView('detail');
+    } else {
+      setView('exercises');
+    }
+  };
+
   const toggleSet = (id: number) => {
-    setSets(sets.map(s => s.id === id ? { ...s, completed: !s.completed } : s));
+    if (isCoach) return;
+    const newSets = sets.map(s => {
+      if (s.id === id) {
+        const newState = !s.completed;
+        if (newState) {
+          // Start rest timer automatically
+          setRestTime(selectedDay.exercises[currentExerciseIdx].rest);
+          setIsResting(true);
+        }
+        return { ...s, completed: newState };
+      }
+      return s;
+    });
+    setSets(newSets);
   };
 
   const updateSet = (id: number, field: string, value: any) => {
     setSets(sets.map(s => s.id === id ? { ...s, [field]: value } : s));
   };
 
+  const deleteSet = (id: number) => {
+    setSets(sets.filter(s => s.id !== id));
+  };
+
+  const reportPain = () => {
+    const exerciseId = selectedDay.exercises[currentExerciseIdx].id;
+    setProblematicExercises([...problematicExercises, exerciseId]);
+    nextExercise();
+  };
+
+  const nextExercise = () => {
+    if (currentExerciseIdx < selectedDay.exercises.length - 1) {
+      const nextIdx = currentExerciseIdx + 1;
+      setCurrentExerciseIdx(nextIdx);
+      setSets(selectedDay.exercises[nextIdx].initialSets);
+      setVideoUrl(selectedDay.exercises[nextIdx].video);
+      setIsResting(false);
+      setRestTime(0);
+    } else {
+      setView('summary');
+    }
+  };
+
+  const deleteWorkoutDay = (id: number) => {
+    if (window.confirm('¿Estás seguro de que quieres eliminar este día de entrenamiento completo?')) {
+      setWorkoutDays(workoutDays.filter(d => d.id !== id));
+    }
+  };
+
+  const addWorkoutDay = () => {
+    const newId = workoutDays.length > 0 ? Math.max(...workoutDays.map(d => d.id)) + 1 : 1;
+    const newDay = {
+      id: newId,
+      title: `Día ${newId}: Nuevo Entrenamiento`,
+      subtitle: 'Programación personalizada',
+      exercises: []
+    };
+    setWorkoutDays([...workoutDays, newDay]);
+  };
+
+  const allSetsCompleted = sets.length > 0 && sets.every(s => s.completed);
+
+  if (view === 'days') {
+    return (
+      <div className="min-h-screen bg-bg-dark text-white pb-32">
+        <header className="p-6">
+          <h1 className="text-3xl font-black italic tracking-tighter">
+            {isCoach ? `Programación: ${clientData?.name}` : 'Mis Entrenamientos'}
+          </h1>
+          <p className="text-slate-400 font-medium">Selecciona una sesión para comenzar</p>
+        </header>
+        <main className="p-4 space-y-4">
+          {workoutDays.map((day) => (
+            <div key={day.id} className="relative group">
+              <button 
+                onClick={() => startWorkout(day)}
+                className="w-full glass-card rounded-2xl p-5 text-left border border-white/5 hover:border-primary/30 transition-all group"
+              >
+                <div className="flex justify-between items-center">
+                  <div>
+                    <h3 className="text-xl font-bold group-hover:text-primary transition-colors">{day.title}</h3>
+                    <p className="text-slate-400 text-sm mt-1">{day.subtitle}</p>
+                    <div className="flex gap-4 mt-4">
+                      <div className="flex items-center gap-1 text-[10px] font-bold uppercase text-slate-500">
+                        <Dumbbell className="size-3" /> {day.exercises.length} Ejercicios
+                      </div>
+                      <div className="flex items-center gap-1 text-[10px] font-bold uppercase text-slate-500">
+                        <Timer className="size-3" /> ~65 min
+                      </div>
+                    </div>
+                  </div>
+                  <ChevronRight className="size-6 text-slate-600 group-hover:text-primary transition-colors" />
+                </div>
+              </button>
+              {isCoach && (
+                <button 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    deleteWorkoutDay(day.id);
+                  }}
+                  className="absolute top-4 right-12 p-2 text-red-500/40 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all"
+                  title="Eliminar día"
+                >
+                  <Trash2 className="size-5" />
+                </button>
+              )}
+            </div>
+          ))}
+          {isCoach && (
+            <button 
+              onClick={addWorkoutDay}
+              className="w-full py-6 border-2 border-dashed border-white/10 rounded-2xl text-slate-500 font-bold flex flex-col items-center gap-2 hover:border-primary/40 hover:text-primary transition-all"
+            >
+              <PlusCircle className="size-8" />
+              <span>Añadir Nuevo Día de Entrenamiento</span>
+            </button>
+          )}
+        </main>
+      </div>
+    );
+  }
+
+  if (view === 'summary') {
+    return (
+      <div className="min-h-screen bg-bg-dark text-white p-6 flex flex-col">
+        <header className="mb-8 text-center">
+          <div className="size-20 bg-primary/20 rounded-full flex items-center justify-center mx-auto mb-4">
+            <CheckCircle2 className="size-12 text-primary" />
+          </div>
+          <h1 className="text-3xl font-black italic">¡Entrenamiento Finalizado!</h1>
+          <p className="text-slate-400">Gran trabajo hoy, completa el feedback para tu coach.</p>
+        </header>
+        <main className="flex-1 space-y-8">
+          <div className="space-y-4">
+            <label className="text-sm font-bold uppercase tracking-widest text-slate-500">Nivel de Fatiga (1-10)</label>
+            <div className="flex flex-col gap-4">
+              <input 
+                type="range" min="1" max="10" value={fatigue} 
+                onChange={(e) => setFatigue(parseInt(e.target.value))}
+                className="w-full h-2 bg-white/10 rounded-lg appearance-none cursor-pointer accent-primary" 
+              />
+              <div className="flex justify-between text-xs font-bold text-slate-500">
+                <span>Fresco</span>
+                <span className="text-primary text-lg">{fatigue}</span>
+                <span>Agotado</span>
+              </div>
+            </div>
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-bold uppercase tracking-widest text-slate-500">Comentarios / Problemas</label>
+            <textarea 
+              value={feedback}
+              onChange={(e) => setFeedback(e.target.value)}
+              placeholder="¿Alguna molestia? ¿Algún ejercicio que no pudiste hacer?"
+              className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 min-h-[120px] focus:ring-2 focus:ring-primary outline-none transition-all"
+            />
+          </div>
+        </main>
+        <button 
+          onClick={() => setView('days')}
+          className="w-full py-5 bg-primary text-bg-dark font-black text-lg rounded-2xl shadow-xl shadow-primary/20 active:scale-95 transition-transform"
+        >
+          GUARDAR Y FINALIZAR
+        </button>
+      </div>
+    );
+  }
+
+  const currentExercise = selectedDay.exercises[currentExerciseIdx];
+
   return (
     <div className="min-h-screen bg-bg-dark text-white pb-32">
       <header className="sticky top-0 z-10 bg-bg-dark/80 backdrop-blur-md border-b border-white/10">
         <div className="flex items-center p-4 justify-between max-w-2xl mx-auto w-full">
           <div className="flex items-center gap-3">
-            <button className="flex items-center justify-center size-10 rounded-full hover:bg-white/10 transition-colors">
+            <button onClick={() => setView('days')} className="flex items-center justify-center size-10 rounded-full hover:bg-white/10 transition-colors">
               <ChevronLeft className="size-6" />
             </button>
             <div>
-              <h1 className="text-lg font-bold leading-tight tracking-tight">Día 1: Pecho y Tríceps</h1>
-              <p className="text-xs text-slate-400 font-medium">Fase de Hipertrofia • Semana 3</p>
+              <h1 className="text-lg font-bold leading-tight tracking-tight">
+                {currentExercise.name}
+              </h1>
+              <p className="text-xs text-slate-400 font-medium">
+                {currentExerciseIdx + 1} de {selectedDay.exercises.length} Ejercicios
+              </p>
             </div>
           </div>
           <button className="flex size-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
@@ -653,103 +915,138 @@ const WorkoutScreen = () => {
       </header>
 
       <main className="max-w-2xl mx-auto w-full">
-        <div className="flex flex-col gap-3 p-4">
-          <div className="flex gap-6 justify-between items-end">
-            <p className="text-sm font-semibold uppercase tracking-wider text-slate-400">3 Series • 10-12 Reps</p>
-            <p className="text-primary text-sm font-bold">{sets.filter(s => s.completed).length} / 6 Series</p>
+        {!isCoach && (
+          <div className="p-4">
+            <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden flex gap-1">
+              {selectedDay.exercises.map((_, i) => (
+                <div 
+                  key={i} 
+                  className={cn(
+                    "h-full flex-1 transition-all duration-500",
+                    i < currentExerciseIdx ? "bg-primary" : i === currentExerciseIdx ? "bg-primary/40" : "bg-white/10"
+                  )}
+                />
+              ))}
+            </div>
           </div>
-          <div className="h-2 rounded-full bg-white/10 overflow-hidden">
-            <div className="h-full rounded-full bg-primary transition-all duration-500" style={{ width: `${(sets.filter(s => s.completed).length / 6) * 100}%` }}></div>
-          </div>
-        </div>
+        )}
 
         <div className="px-4 py-2">
-          <div className="glass-card rounded-xl overflow-hidden">
+          <div className="glass-card rounded-2xl overflow-hidden border border-white/5">
             <div className="relative aspect-video w-full bg-slate-900 flex items-center justify-center group">
               <img 
-                src="https://picsum.photos/seed/benchpress/800/450" 
+                src={videoUrl} 
                 className="absolute inset-0 w-full h-full object-cover opacity-60" 
-                alt="Bench Press" 
+                alt="Exercise Video" 
               />
               <div className="absolute inset-0 bg-black/40"></div>
               <button className="relative z-10 flex shrink-0 items-center justify-center rounded-full size-16 bg-primary text-bg-dark shadow-lg hover:scale-110 transition-transform">
                 <Play className="size-8 fill-current" />
               </button>
+              {isCoach && (
+                <button 
+                  onClick={() => setShowVideoEditor(true)}
+                  className="absolute top-4 right-4 bg-black/60 backdrop-blur-md p-2 rounded-lg text-white hover:text-primary transition-colors"
+                >
+                  <Settings className="size-5" />
+                </button>
+              )}
               <div className="absolute bottom-3 left-3 bg-black/60 backdrop-blur-sm px-2 py-1 rounded text-[10px] font-bold text-white uppercase tracking-widest">VÍDEO DE TÉCNICA</div>
             </div>
 
             <div className="p-5">
-              <div className="flex justify-between items-start mb-4">
+              <div className="flex justify-between items-start mb-6">
                 <div>
-                  <h2 className="text-2xl font-bold tracking-tight mb-1">Flat Barbell Bench Press</h2>
-                  <span className="inline-flex items-center gap-1 text-xs font-medium text-slate-400">
-                    <Info className="size-3" /> Descanso: 120-180 segundos
-                  </span>
+                  <h2 className="text-2xl font-black italic tracking-tight mb-1">{currentExercise.name}</h2>
+                  <div className="flex gap-3">
+                    <span className="inline-flex items-center gap-1 text-xs font-bold text-slate-400 uppercase tracking-widest">
+                      <Info className="size-3" /> {sets.length} Series • {currentExercise.reps} Reps
+                    </span>
+                    <span className="inline-flex items-center gap-1 text-xs font-bold text-primary uppercase tracking-widest">
+                      <Timer className="size-3" /> {currentExercise.rest}s Descanso
+                    </span>
+                  </div>
                 </div>
-                <button className="text-primary hover:bg-primary/10 p-2 rounded-full transition-colors">
-                  <MoreVertical className="size-5" />
-                </button>
               </div>
 
               <div className="space-y-3">
-                {sets.map((set) => (
+                {sets.map((set, idx) => (
                   <div 
                     key={set.id} 
                     className={cn(
-                      "flex items-center gap-3 p-3 rounded-lg transition-all",
-                      set.completed 
-                        ? "bg-white/5 border border-white/10 opacity-60" 
-                        : "bg-primary/5 border-2 border-primary ring-4 ring-primary/10"
+                      "flex items-center gap-3 p-3 rounded-2xl transition-all border",
+                      set.completed && !isCoach
+                        ? "bg-white/5 border-white/10 opacity-60" 
+                        : "bg-white/5 border-white/5"
                     )}
                   >
                     <div className={cn(
-                      "flex items-center justify-center size-8 rounded-full font-bold text-sm transition-colors",
-                      set.completed ? "bg-primary text-bg-dark" : "bg-white/10 text-white"
+                      "flex items-center justify-center size-8 rounded-full font-black text-sm transition-colors",
+                      set.completed && !isCoach ? "bg-primary text-bg-dark" : "bg-white/10 text-white"
                     )}>
-                      {set.id}
+                      {idx + 1}
                     </div>
-                    <div className="flex-1 grid grid-cols-3 gap-2">
+                    <div className="flex-1 grid grid-cols-4 gap-2">
                       <div className="flex flex-col items-center">
-                        <label className="text-[10px] uppercase text-slate-500 font-bold">KG</label>
+                        <label className="text-[8px] uppercase text-slate-500 font-black">KG</label>
                         <input 
-                          className="w-full bg-transparent border-none text-center font-bold p-0 focus:ring-0 text-lg" 
+                          className="w-full bg-transparent border-none text-center font-black p-0 focus:ring-0 text-lg" 
                           type="number" 
                           value={set.kg}
                           onChange={(e) => updateSet(set.id, 'kg', parseInt(e.target.value) || 0)}
-                          disabled={set.completed}
+                          disabled={set.completed && !isCoach}
                         />
                       </div>
                       <div className="flex flex-col items-center border-x border-white/10">
-                        <label className="text-[10px] uppercase text-slate-500 font-bold">REPS</label>
+                        <label className="text-[8px] uppercase text-slate-500 font-black">REPS</label>
                         <input 
-                          className="w-full bg-transparent border-none text-center font-bold p-0 focus:ring-0 text-lg" 
-                          placeholder="0" 
+                          className="w-full bg-transparent border-none text-center font-black p-0 focus:ring-0 text-lg" 
                           type="number" 
-                          value={set.reps || ''}
+                          value={set.reps}
                           onChange={(e) => updateSet(set.id, 'reps', parseInt(e.target.value) || 0)}
-                          disabled={set.completed}
+                          disabled={set.completed && !isCoach}
                         />
                       </div>
-                      <div className="flex flex-col items-center">
-                        <label className="text-[10px] uppercase text-slate-500 font-bold">RPE</label>
+                      <div className="flex flex-col items-center border-r border-white/10">
+                        <label className="text-[8px] uppercase text-slate-500 font-black">RPE</label>
                         <select 
-                          defaultValue={set.rpe}
+                          value={set.rpe}
                           onChange={(e) => updateSet(set.id, 'rpe', parseInt(e.target.value))}
-                          disabled={set.completed}
-                          className="w-full bg-transparent border-none text-center font-bold p-0 focus:ring-0 text-lg appearance-none cursor-pointer"
+                          disabled={set.completed && !isCoach}
+                          className="w-full bg-transparent border-none text-center font-black p-0 focus:ring-0 text-lg appearance-none cursor-pointer"
                         >
-                          {[7, 8, 9, 10].map(val => (
+                          {Array.from({length: 11}, (_, i) => i).map(val => (
+                            <option key={val} className="bg-bg-dark" value={val}>{val}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="flex flex-col items-center">
+                        <label className="text-[8px] uppercase text-slate-500 font-black">RIR</label>
+                        <select 
+                          value={set.rir}
+                          onChange={(e) => updateSet(set.id, 'rir', parseInt(e.target.value))}
+                          disabled={set.completed && !isCoach}
+                          className="w-full bg-transparent border-none text-center font-black p-0 focus:ring-0 text-lg appearance-none cursor-pointer"
+                        >
+                          {Array.from({length: 6}, (_, i) => i).map(val => (
                             <option key={val} className="bg-bg-dark" value={val}>{val}</option>
                           ))}
                         </select>
                       </div>
                     </div>
-                    {set.completed ? (
+                    {isCoach ? (
+                      <button 
+                        onClick={() => deleteSet(set.id)}
+                        className="text-red-500 p-2 hover:bg-red-500/10 rounded-lg transition-colors"
+                      >
+                        <Trash2 className="size-5" />
+                      </button>
+                    ) : set.completed ? (
                       <CheckCircle2 onClick={() => toggleSet(set.id)} className="size-6 text-primary fill-current cursor-pointer" />
                     ) : (
                       <button 
                         onClick={() => toggleSet(set.id)}
-                        className="bg-primary text-bg-dark px-4 py-2 rounded-lg font-bold text-sm hover:brightness-110 transition-all active:scale-95"
+                        className="bg-primary text-bg-dark px-3 py-2 rounded-xl font-black text-[10px] hover:brightness-110 transition-all active:scale-95"
                       >
                         ANOTAR
                       </button>
@@ -757,45 +1054,141 @@ const WorkoutScreen = () => {
                   </div>
                 ))}
 
-                <div className="mt-4 bg-primary text-bg-dark p-4 rounded-xl flex items-center justify-between shadow-lg">
-                  <div className="flex items-center gap-3">
-                    <Timer className="size-8" />
-                    <div>
-                      <p className="text-[10px] font-bold uppercase leading-none">Descanso en curso</p>
-                      <p className="text-2xl font-black">01:29</p>
+                {isResting && !isCoach && (
+                  <div className="mt-4 bg-primary text-bg-dark p-4 rounded-2xl flex items-center justify-between shadow-xl animate-pulse">
+                    <div className="flex items-center gap-3">
+                      <Timer className="size-8" />
+                      <div>
+                        <p className="text-[10px] font-black uppercase leading-none">Descanso en curso</p>
+                        <p className="text-3xl font-black">
+                          {Math.floor(restTime / 60)}:{(restTime % 60).toString().padStart(2, '0')}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button 
+                        onClick={() => setRestTime(prev => prev + 15)}
+                        className="bg-black/10 hover:bg-black/20 p-2 rounded-lg transition-colors"
+                      >
+                        <span className="text-xs font-bold">+15s</span>
+                      </button>
+                      <button 
+                        onClick={() => { setIsResting(false); setRestTime(0); }}
+                        className="bg-black text-white px-4 py-2 rounded-xl font-black text-xs"
+                      >
+                        SALTAR
+                      </button>
                     </div>
                   </div>
-                  <div className="flex gap-2">
-                    <button className="bg-black/10 hover:bg-black/20 p-2 rounded-lg transition-colors">
-                      <span className="text-xs font-bold">+15s</span>
-                    </button>
-                    <button className="bg-black text-white px-4 py-2 rounded-lg font-bold text-sm">SALTAR</button>
-                  </div>
-                </div>
+                )}
               </div>
 
               <button 
-                onClick={() => setSets([...sets, { id: sets.length + 1, kg: 185, reps: 0, rpe: 8, completed: false }])}
-                className="mt-4 w-full py-3 border-2 border-dashed border-white/20 rounded-xl text-slate-400 font-bold text-sm flex items-center justify-center gap-2 hover:bg-white/5 transition-colors"
+                onClick={() => setSets([...sets, { id: Date.now(), kg: 0, reps: 0, rpe: 8, rir: 2, completed: false }])}
+                className="mt-4 w-full py-4 border-2 border-dashed border-white/10 rounded-2xl text-slate-500 font-bold text-sm flex items-center justify-center gap-2 hover:bg-white/5 hover:text-primary hover:border-primary/30 transition-all"
               >
-                <Plus className="size-4" /> Añadir Serie Extra
+                <Plus className="size-4" /> {isCoach ? 'Añadir Serie Prescrita' : 'Añadir Serie Extra'}
               </button>
             </div>
           </div>
         </div>
 
-        <div className="px-4 py-4">
-          <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">SIGUIENTE EJERCICIO</h3>
-          <div className="flex items-center gap-4 p-4 bg-white/5 rounded-xl border border-white/10">
-            <div className="size-16 rounded-lg bg-slate-800 bg-cover bg-center shrink-0 overflow-hidden" style={{ backgroundImage: 'url("https://picsum.photos/seed/flyes/100/100")' }}></div>
-            <div className="flex-1">
-              <h4 className="font-bold">Incline Dumbbell Flyes</h4>
-              <p className="text-sm text-slate-400">3 Series • 10-12 Reps</p>
-            </div>
-            <ChevronRight className="size-5 text-slate-400" />
+        <div className="px-4 py-4 space-y-4">
+          {!isCoach && (
+            <button 
+              onClick={reportPain}
+              className="w-full py-4 bg-red-500/10 text-red-500 border border-red-500/20 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 active:scale-95 transition-transform"
+            >
+              <Bell className="size-5" /> Reportar Molestia / Saltar Ejercicio
+            </button>
+          )}
+
+          <div className="space-y-3">
+            <h3 className="text-xs font-black text-slate-500 uppercase tracking-[0.2em] ml-1">
+              {isCoach ? 'SIGUIENTE EN LA RUTINA' : 'SIGUIENTE EJERCICIO'}
+            </h3>
+            {currentExerciseIdx < selectedDay.exercises.length - 1 ? (
+              <button 
+                disabled={!allSetsCompleted && !isCoach}
+                onClick={nextExercise}
+                className={cn(
+                  "w-full flex items-center gap-4 p-4 rounded-2xl border transition-all text-left",
+                  allSetsCompleted || isCoach 
+                    ? "bg-white/5 border-white/10 hover:border-primary/40" 
+                    : "bg-white/5 border-white/5 opacity-40 grayscale cursor-not-allowed"
+                )}
+              >
+                <div className="size-16 rounded-xl bg-slate-800 bg-cover bg-center shrink-0 overflow-hidden" style={{ backgroundImage: `url(${selectedDay.exercises[currentExerciseIdx + 1].video})` }}></div>
+                <div className="flex-1">
+                  <h4 className="font-bold">{selectedDay.exercises[currentExerciseIdx + 1].name}</h4>
+                  <p className="text-sm text-slate-400">{selectedDay.exercises[currentExerciseIdx + 1].initialSets.length} Series • {selectedDay.exercises[currentExerciseIdx + 1].reps} Reps</p>
+                </div>
+                {allSetsCompleted || isCoach ? (
+                  <ChevronRight className="size-5 text-primary" />
+                ) : (
+                  <Settings className="size-5 text-slate-600" />
+                )}
+              </button>
+            ) : (
+              <button 
+                disabled={!allSetsCompleted && !isCoach}
+                onClick={() => setView('summary')}
+                className={cn(
+                  "w-full py-5 rounded-2xl font-black text-lg flex items-center justify-center gap-2 transition-all",
+                  allSetsCompleted || isCoach 
+                    ? "bg-primary text-bg-dark shadow-xl shadow-primary/20" 
+                    : "bg-white/5 text-slate-600 opacity-40 grayscale cursor-not-allowed"
+                )}
+              >
+                FINALIZAR ENTRENAMIENTO
+              </button>
+            )}
           </div>
         </div>
       </main>
+
+      <AnimatePresence>
+        {showVideoEditor && (
+          <>
+            <motion.div 
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              onClick={() => setShowVideoEditor(false)}
+              className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[60]"
+            />
+            <motion.div 
+              initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
+              className="fixed bottom-0 left-0 right-0 bg-bg-dark border-t border-white/10 rounded-t-[32px] p-8 z-[70]"
+            >
+              <h3 className="text-2xl font-black italic mb-6">Cambiar Vídeo de Técnica</h3>
+              <div className="space-y-6">
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Enlace de Vídeo (YouTube/Vimeo)</label>
+                  <input 
+                    type="text" 
+                    value={videoUrl}
+                    onChange={(e) => setVideoUrl(e.target.value)}
+                    className="w-full h-14 bg-white/5 border border-white/10 rounded-xl px-4 text-white focus:ring-2 focus:ring-primary outline-none"
+                    placeholder="https://youtube.com/..."
+                  />
+                </div>
+                <div className="relative">
+                  <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-white/10"></div></div>
+                  <div className="relative flex justify-center text-xs uppercase font-bold"><span className="bg-bg-dark px-4 text-slate-500">O subir archivo</span></div>
+                </div>
+                <button className="w-full h-14 border-2 border-dashed border-white/10 rounded-xl text-slate-400 font-bold flex items-center justify-center gap-2 hover:border-primary/40 hover:text-primary transition-all">
+                  <Camera className="size-5" /> Seleccionar Archivo MP4/MOV
+                </button>
+                <button 
+                  onClick={() => setShowVideoEditor(false)}
+                  className="w-full py-4 bg-primary text-bg-dark font-black rounded-xl mt-4"
+                >
+                  GUARDAR CAMBIOS
+                </button>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
@@ -1042,7 +1435,7 @@ const TimerScreen = () => {
   );
 };
 
-const NutritionScreen = () => {
+const NutritionScreen = ({ isCoach, clientData }: { isCoach?: boolean; clientData?: Client | null }) => {
   const [selectedDay, setSelectedDay] = useState(2); // 0: Mon, 1: Tue, 2: Wed, etc.
   const [selectedMeal, setSelectedMeal] = useState<any>(null);
 
@@ -1111,7 +1504,9 @@ const NutritionScreen = () => {
               <Utensils className="size-6" />
             </div>
             <div>
-              <h2 className="text-lg font-bold leading-tight tracking-tight">Mi Nutrición</h2>
+              <h2 className="text-lg font-bold leading-tight tracking-tight">
+                {isCoach ? `Nutrición: ${clientData?.name}` : 'Mi Nutrición'}
+              </h2>
               <p className="text-slate-400 text-xs">{selectedDay === 2 ? 'Miércoles, 24 Oct' : 'Octubre 2024'}</p>
             </div>
           </div>
@@ -1168,7 +1563,9 @@ const NutritionScreen = () => {
 
         <div>
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-bold tracking-tight">Comidas de hoy</h3>
+            <h3 className="text-lg font-bold tracking-tight">
+              {isCoach ? 'Plan Nutricional' : 'Comidas de hoy'}
+            </h3>
             <span className="text-primary text-sm font-medium">1,450 kcal consumidas</span>
           </div>
           <div className="space-y-3">
@@ -1186,19 +1583,22 @@ const NutritionScreen = () => {
                     {meal.checked && <Check className="size-4 text-bg-dark font-bold" />}
                   </div>
                   <div className="flex flex-col">
-                    <p className={cn("font-semibold", meal.checked && "line-through text-slate-500")}>{meal.name}</p>
+                    <p className={cn("font-semibold", meal.checked && !isCoach && "line-through text-slate-500")}>{meal.name}</p>
                     <p className="text-slate-400 text-sm">{meal.desc}</p>
                   </div>
                 </div>
-                <div className="text-right">
-                  <p className="font-medium">{meal.kcal} kcal</p>
-                  <p className="text-slate-400 text-xs">{meal.time}</p>
+                <div className="text-right flex items-center gap-3">
+                  <div>
+                    <p className="font-medium">{meal.kcal} kcal</p>
+                    <p className="text-slate-400 text-xs">{meal.time}</p>
+                  </div>
+                  {isCoach && <Settings className="size-5 text-slate-500 group-hover:text-primary transition-colors" />}
                 </div>
               </div>
             ))}
           </div>
           <button className="w-full mt-6 flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-bg-dark font-bold hover:opacity-90 transition-opacity">
-            <PlusCircle className="size-5" /> Añadir comida / snack
+            <PlusCircle className="size-5" /> {isCoach ? 'Prescribir Comida' : 'Añadir comida / snack'}
           </button>
         </div>
       </main>
@@ -1274,7 +1674,7 @@ const NutritionScreen = () => {
   );
 };
 
-const ProgressScreen = () => {
+const ProgressScreen = ({ isCoach, clientData }: { isCoach?: boolean; clientData?: Client | null }) => {
   const [range, setRange] = useState('1M');
 
   return (
@@ -1284,7 +1684,9 @@ const ProgressScreen = () => {
           <button className="p-2 rounded-lg hover:bg-primary/10 transition-colors">
             <Menu className="size-6" />
           </button>
-          <h1 className="text-lg font-bold leading-tight tracking-tight flex-1 text-center">Mi Progreso</h1>
+          <h1 className="text-lg font-bold leading-tight tracking-tight flex-1 text-center">
+            {isCoach ? `Progreso: ${clientData?.name}` : 'Mi Progreso'}
+          </h1>
           <button className="p-2 rounded-lg hover:bg-primary/10 transition-colors">
             <Bell className="size-6" />
           </button>
@@ -1302,7 +1704,7 @@ const ProgressScreen = () => {
           <div className="glass-card rounded-xl p-4">
             <p className="text-slate-400 text-xs font-medium uppercase">Peso Actual</p>
             <div className="flex items-baseline gap-2 mt-1">
-              <p className="text-2xl font-bold">82.5 kg</p>
+              <p className="text-2xl font-bold">{isCoach ? clientData?.weight : '82.5 kg'}</p>
               <span className="text-red-500 text-xs font-bold">-1.2%</span>
             </div>
           </div>
@@ -1340,7 +1742,7 @@ const ProgressScreen = () => {
                   className={cn("absolute bottom-0 w-full rounded-t-sm transition-all duration-500", i === 7 ? "bg-primary" : "bg-primary/40")} 
                   style={{ height: `${range === '1M' ? h : h * 0.8}%` }} 
                 />
-                {i === 7 && <div className="absolute -top-6 left-1/2 -translate-x-1/2 text-[10px] font-bold text-primary neon-text">82.5</div>}
+                {i === 7 && <div className="absolute -top-6 left-1/2 -translate-x-1/2 text-[10px] font-bold text-primary neon-text">{isCoach ? clientData?.weight?.split(' ')[0] : '82.5'}</div>}
               </div>
             ))}
           </div>
@@ -1355,7 +1757,7 @@ const ProgressScreen = () => {
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-bold">Galería de Evolución</h2>
             <button className="text-primary text-sm font-bold flex items-center gap-1">
-              Añadir <Camera className="size-4" />
+              {isCoach ? 'Gestionar' : 'Añadir'} <Camera className="size-4" />
             </button>
           </div>
           <div className="grid grid-cols-2 gap-4">
@@ -1371,10 +1773,12 @@ const ProgressScreen = () => {
                 </div>
               </div>
             ))}
-            <div className="aspect-[3/4] rounded-xl border-2 border-dashed border-white/10 flex flex-col items-center justify-center text-slate-500 hover:border-primary hover:text-primary transition-all cursor-pointer">
-              <PlusCircle className="size-8 mb-2" />
-              <span className="text-xs font-bold uppercase tracking-wider">Subir Nueva</span>
-            </div>
+            {!isCoach && (
+              <div className="aspect-[3/4] rounded-xl border-2 border-dashed border-white/10 flex flex-col items-center justify-center text-slate-500 hover:border-primary hover:text-primary transition-all cursor-pointer">
+                <PlusCircle className="size-8 mb-2" />
+                <span className="text-xs font-bold uppercase tracking-wider">Subir Nueva</span>
+              </div>
+            )}
           </div>
         </section>
       </main>
@@ -1382,11 +1786,13 @@ const ProgressScreen = () => {
   );
 };
 
-const ProfileScreen = () => {
+const ProfileScreen = ({ isCoach, clientData, onLogout }: { isCoach?: boolean; clientData?: Client | null; onLogout: () => void }) => {
   return (
     <div className="min-h-screen bg-bg-dark text-white pb-32">
       <header className="flex items-center p-4 justify-between border-b border-white/10 sticky top-0 z-10 bg-bg-dark/80 backdrop-blur-md">
-        <h2 className="text-lg font-bold tracking-tight">Mi Perfil</h2>
+        <h2 className="text-lg font-bold tracking-tight">
+          {isCoach ? `Perfil: ${clientData?.name}` : 'Mi Perfil'}
+        </h2>
         <button className="p-2 rounded-full hover:bg-white/10 transition-colors">
           <MoreVertical className="size-6" />
         </button>
@@ -1396,17 +1802,19 @@ const ProfileScreen = () => {
         <div className="flex flex-col items-center gap-6 mb-8">
           <div className="relative">
             <div className="size-32 rounded-full border-4 border-primary overflow-hidden">
-              <img src="https://picsum.photos/seed/sarah/200/200" className="w-full h-full object-cover" alt="Profile" />
+              <img src={isCoach ? clientData?.img : "https://picsum.photos/seed/sarah/200/200"} className="w-full h-full object-cover" alt="Profile" />
             </div>
             <div className="absolute bottom-1 right-1 bg-primary text-bg-dark rounded-full p-1 border-2 border-bg-dark">
               <Verified className="size-4" />
             </div>
           </div>
           <div className="text-center">
-            <h3 className="text-2xl font-bold tracking-tight">Sarah Jenkins</h3>
+            <h3 className="text-2xl font-bold tracking-tight">{isCoach ? clientData?.name : 'Sarah Jenkins'}</h3>
             <div className="flex items-center gap-2 mt-1 justify-center">
               <span className="size-2 rounded-full bg-primary neon-text"></span>
-              <p className="text-slate-400 text-xs font-medium uppercase tracking-widest">ACTIVA • RACHA DE 8 MESES</p>
+              <p className="text-slate-400 text-xs font-medium uppercase tracking-widest">
+                {clientData?.active ? 'ACTIVA' : 'EN PAUSA'} • RACHA DE 8 MESES
+              </p>
             </div>
           </div>
         </div>
@@ -1414,11 +1822,11 @@ const ProfileScreen = () => {
         <div className="grid grid-cols-2 gap-3 mb-8">
           <div className="glass-card rounded-xl p-4">
             <p className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">Peso</p>
-            <p className="text-xl font-bold">64.2 kg</p>
+            <p className="text-xl font-bold">{isCoach ? clientData?.weight : '64.2 kg'}</p>
           </div>
           <div className="glass-card rounded-xl p-4">
             <p className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">Grasa Corporal</p>
-            <p className="text-xl font-bold">21.4%</p>
+            <p className="text-xl font-bold">{isCoach ? clientData?.bodyFat : '21.4%'}</p>
           </div>
         </div>
 
@@ -1426,20 +1834,25 @@ const ProfileScreen = () => {
           <button className="w-full flex items-center justify-between p-4 glass-card rounded-xl group transition-all hover:border-primary/40">
             <div className="flex items-center gap-3">
               <Settings className="size-5 text-slate-400" />
-              <span className="font-semibold">Ajustes de cuenta</span>
+              <span className="font-semibold">{isCoach ? 'Ajustes del Cliente' : 'Ajustes de cuenta'}</span>
             </div>
             <ChevronRight className="size-5 text-slate-400" />
           </button>
           <button className="w-full flex items-center justify-between p-4 glass-card rounded-xl group transition-all hover:border-primary/40">
             <div className="flex items-center gap-3">
               <Users className="size-5 text-slate-400" />
-              <span className="font-semibold">Soporte con mi entrenador</span>
+              <span className="font-semibold">{isCoach ? 'Historial de Pagos' : 'Soporte con mi entrenador'}</span>
             </div>
             <ChevronRight className="size-5 text-slate-400" />
           </button>
-          <button className="w-full flex items-center justify-center p-4 mt-4 text-red-500 font-bold border border-red-500/20 rounded-xl hover:bg-red-500/10 transition-colors">
-            <LogOut className="size-5 mr-2" /> Cerrar sesión
-          </button>
+          {!isCoach && (
+            <button 
+              onClick={onLogout}
+              className="w-full flex items-center justify-center p-4 mt-4 text-red-500 font-bold border border-red-500/20 rounded-xl hover:bg-red-500/10 transition-colors"
+            >
+              <LogOut className="size-5 mr-2" /> Cerrar sesión
+            </button>
+          )}
         </div>
       </main>
     </div>
@@ -1448,11 +1861,65 @@ const ProfileScreen = () => {
 
 export default function App() {
   const [screen, setScreen] = useState<Screen>('welcome');
+  const [userRole, setUserRole] = useState<'admin' | 'client' | null>(null);
+  const [selectedClient, setSelectedClient] = useState<Client | null>(null);
 
   const showNav = !['onboarding', 'login', 'welcome', 'register'].includes(screen);
 
+  const handleLogin = (role: 'admin' | 'client') => {
+    setUserRole(role);
+    if (role === 'admin') {
+      setScreen('dashboard');
+    } else {
+      setScreen('workout');
+    }
+  };
+
+  const handleSelectClient = (client: Client) => {
+    setSelectedClient(client);
+    setScreen('workout');
+  };
+
+  const isCoachViewing = userRole === 'admin' && selectedClient !== null;
+
   return (
     <div className="bg-bg-dark min-h-screen font-sans">
+      {isCoachViewing && (
+        <div className="bg-primary/10 border-b border-primary/20 px-4 py-2 flex items-center justify-between sticky top-0 z-50 backdrop-blur-md">
+          <div className="flex items-center gap-2">
+            <div className="size-6 rounded-full overflow-hidden border border-primary/40">
+              <img src={selectedClient.img} className="w-full h-full object-cover" alt={selectedClient.name} />
+            </div>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-primary">
+              Modo Edición: <span className="text-white">{selectedClient.name}</span>
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <button 
+              onClick={() => {
+                // Simulate saving
+                const toast = document.createElement('div');
+                toast.className = 'fixed bottom-24 left-1/2 -translate-x-1/2 bg-primary text-bg-dark px-6 py-3 rounded-full font-bold shadow-xl z-[100] animate-bounce';
+                toast.innerText = '✓ Cambios guardados correctamente';
+                document.body.appendChild(toast);
+                setTimeout(() => toast.remove(), 3000);
+              }}
+              className="text-[10px] font-bold uppercase tracking-widest bg-white/10 text-white px-3 py-1 rounded hover:bg-white/20 transition-colors"
+            >
+              Guardar
+            </button>
+            <button 
+              onClick={() => {
+                setSelectedClient(null);
+                setScreen('dashboard');
+              }}
+              className="text-[10px] font-bold uppercase tracking-widest bg-primary text-bg-dark px-3 py-1 rounded"
+            >
+              Salir
+            </button>
+          </div>
+        </div>
+      )}
       <AnimatePresence mode="wait">
         <motion.div
           key={screen}
@@ -1464,27 +1931,45 @@ export default function App() {
           {screen === 'welcome' && (
             <WelcomeScreen 
               onLogin={() => setScreen('login')} 
-              onRegister={() => setScreen('register')} 
             />
           )}
-          {screen === 'register' && <RegisterScreen onRegister={() => setScreen('onboarding')} />}
+          {screen === 'register' && (
+            <RegisterScreen 
+              onRegister={() => setScreen('onboarding')} 
+              onBack={() => setScreen('dashboard')}
+            />
+          )}
           {screen === 'onboarding' && <OnboardingScreen onComplete={() => setScreen('dashboard')} />}
           {screen === 'login' && (
             <LoginScreen 
-              onLogin={() => setScreen('dashboard')} 
-              onRegister={() => setScreen('register')}
+              onLogin={handleLogin} 
             />
           )}
-          {screen === 'dashboard' && <DashboardScreen />}
-          {screen === 'workout' && <WorkoutScreen />}
+          {screen === 'dashboard' && (
+            <DashboardScreen 
+              onAddClient={() => setScreen('register')} 
+              onSelectClient={handleSelectClient}
+            />
+          )}
+          {screen === 'workout' && <WorkoutScreen isCoach={isCoachViewing} clientData={selectedClient} />}
           {screen === 'timer' && <TimerScreen />}
-          {screen === 'nutrition' && <NutritionScreen />}
-          {screen === 'progress' && <ProgressScreen />}
-          {screen === 'profile' && <ProfileScreen />}
+          {screen === 'nutrition' && <NutritionScreen isCoach={isCoachViewing} clientData={selectedClient} />}
+          {screen === 'progress' && <ProgressScreen isCoach={isCoachViewing} clientData={selectedClient} />}
+          {screen === 'profile' && (
+            <ProfileScreen 
+              isCoach={isCoachViewing}
+              clientData={selectedClient}
+              onLogout={() => {
+                setUserRole(null);
+                setSelectedClient(null);
+                setScreen('welcome');
+              }} 
+            />
+          )}
         </motion.div>
       </AnimatePresence>
 
-      {showNav && <BottomNav active={screen} onChange={setScreen} />}
+      {showNav && <BottomNav active={screen} onChange={setScreen} role={userRole} />}
     </div>
   );
 }

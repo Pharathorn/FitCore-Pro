@@ -105,6 +105,17 @@ interface Coach {
   img: string;
 }
 
+interface Notification {
+  id: string;
+  clientId: string;
+  clientName: string;
+  exerciseName: string;
+  description?: string;
+  painLevel?: number;
+  timestamp: Date;
+  read: boolean;
+}
+
 interface Client {
   id: string;
   name: string;
@@ -410,9 +421,12 @@ const HomeScreen = ({ clientData, isCoach }: { clientData: Client | null; isCoac
 
 // --- Screens ---
 
-const DashboardScreen = ({ coach, clients, onAddClient, onSelectClient }: { coach: Coach | null; clients: Client[]; onAddClient: () => void; onSelectClient: (client: Client) => void }) => {
+const DashboardScreen = ({ coach, clients, notifications, onAddClient, onSelectClient, onMarkNotificationRead }: { coach: Coach | null; clients: Client[]; notifications: Notification[]; onAddClient: () => void; onSelectClient: (client: Client) => void; onMarkNotificationRead: (id: string) => void }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
+  const [showNotifications, setShowNotifications] = useState(false);
+
+  const unreadCount = notifications.filter(n => !n.read).length;
 
   const engagementData = [
     { day: 'MON', value: 65 },
@@ -446,10 +460,110 @@ const DashboardScreen = ({ coach, clients, onAddClient, onSelectClient }: { coac
           <p className="text-xs text-slate-400 font-medium">Panel de Entrenador,</p>
           <h2 className="text-lg font-bold leading-tight tracking-tight">{coach?.name || 'Coach Alex'}</h2>
         </div>
-        <button className="flex size-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+        <button 
+          onClick={() => setShowNotifications(true)}
+          className="flex size-10 items-center justify-center rounded-lg bg-primary/10 text-primary relative"
+        >
           <Bell className="size-5" />
+          {unreadCount > 0 && (
+            <span className="absolute -top-1 -right-1 size-4 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center border-2 border-bg-dark">
+              {unreadCount}
+            </span>
+          )}
         </button>
       </header>
+
+      <AnimatePresence>
+        {showNotifications && (
+          <>
+            <motion.div 
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              onClick={() => setShowNotifications(false)}
+              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40"
+            />
+            <motion.div 
+              initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }}
+              className="fixed top-0 right-0 bottom-0 w-[85%] max-w-sm bg-bg-dark border-l border-white/10 z-50 flex flex-col"
+            >
+              <header className="p-6 border-b border-white/10 flex items-center justify-between">
+                <h3 className="text-xl font-black italic">Notificaciones</h3>
+                <button onClick={() => setShowNotifications(false)} className="p-2 hover:bg-white/5 rounded-full">
+                  <ChevronRight className="size-6" />
+                </button>
+              </header>
+              <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                {notifications.length > 0 ? (
+                  notifications.map((n) => (
+                    <div 
+                      key={n.id} 
+                      className={cn(
+                        "p-4 rounded-2xl border transition-all",
+                        n.read ? "bg-white/5 border-white/5 opacity-60" : "bg-primary/5 border-primary/20"
+                      )}
+                    >
+                      <div className="flex justify-between items-start mb-2">
+                        <span className="text-[10px] font-black uppercase tracking-widest text-primary">Molestia Reportada</span>
+                        <span className="text-[10px] text-slate-500">{n.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                      </div>
+                      <p className="text-sm font-bold mb-1">
+                        <span className="text-primary">{n.clientName}</span> reportó molestias en:
+                      </p>
+                      <p className="text-sm text-white font-medium bg-white/5 p-2 rounded-lg border border-white/10 mb-3">
+                        {n.exerciseName}
+                      </p>
+                      {n.painLevel && (
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Intensidad:</span>
+                          <div className={cn(
+                            "px-2 py-0.5 rounded text-[10px] font-black",
+                            n.painLevel > 7 ? "bg-red-500 text-white" : n.painLevel > 4 ? "bg-orange-500 text-white" : "bg-yellow-500 text-bg-dark"
+                          )}>
+                            {n.painLevel}/10
+                          </div>
+                        </div>
+                      )}
+                      {n.description && (
+                        <div className="mb-3 p-3 bg-red-500/5 border border-red-500/10 rounded-xl">
+                          <p className="text-[10px] font-bold text-red-400 uppercase tracking-widest mb-1">Detalles de la molestia:</p>
+                          <p className="text-xs text-slate-300 italic">"{n.description}"</p>
+                        </div>
+                      )}
+                      <div className="flex gap-2">
+                        {!n.read && (
+                          <button 
+                            onClick={() => onMarkNotificationRead(n.id)}
+                            className="flex-1 py-2 bg-primary text-bg-dark text-[10px] font-black uppercase rounded-lg"
+                          >
+                            Marcar Leída
+                          </button>
+                        )}
+                        <button 
+                          onClick={() => {
+                            const client = clients.find(c => c.id === n.clientId);
+                            if (client) {
+                              onSelectClient(client);
+                              setShowNotifications(false);
+                            }
+                          }}
+                          className="flex-1 py-2 bg-white/10 text-white text-[10px] font-black uppercase rounded-lg border border-white/10"
+                        >
+                          Ver Perfil
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="h-full flex flex-col items-center justify-center text-center p-8 opacity-40">
+                    <Bell className="size-12 mb-4" />
+                    <p className="font-bold">No tienes notificaciones</p>
+                    <p className="text-xs mt-1">Todo está bajo control por ahora.</p>
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
 
       <div className="flex flex-wrap gap-4 p-4">
         <div className="flex-1 min-w-[140px] glass-card rounded-xl p-4">
@@ -1023,7 +1137,7 @@ const LoginScreen = ({ onLogin }: { onLogin: (role: 'admin' | 'client', email?: 
   );
 };
 
-const WorkoutScreen = ({ isCoach, clientData }: { isCoach?: boolean; clientData?: Client | null }) => {
+const WorkoutScreen = ({ isCoach, clientData, onReportDiscomfort }: { isCoach?: boolean; clientData?: Client | null; onReportDiscomfort?: (exerciseName: string, description?: string, painLevel?: number) => void }) => {
   const [view, setView] = useState<'days' | 'exercises' | 'detail' | 'summary'>('days');
   const [selectedDay, setSelectedDay] = useState<any>(null);
   const [currentExerciseIdx, setCurrentExerciseIdx] = useState(0);
@@ -1035,6 +1149,9 @@ const WorkoutScreen = ({ isCoach, clientData }: { isCoach?: boolean; clientData?
   const [videoUrl, setVideoUrl] = useState("https://picsum.photos/seed/benchpress/800/450");
   const [fatigue, setFatigue] = useState(5);
   const [feedback, setFeedback] = useState("");
+  const [showPainModal, setShowPainModal] = useState(false);
+  const [painDescription, setPainDescription] = useState("");
+  const [painLevel, setPainLevel] = useState(5);
 
   const [workoutDays, setWorkoutDays] = useState([
     { 
@@ -1133,8 +1250,14 @@ const WorkoutScreen = ({ isCoach, clientData }: { isCoach?: boolean; clientData?
   };
 
   const reportPain = () => {
-    const exerciseId = selectedDay.exercises[currentExerciseIdx].id;
-    setProblematicExercises([...problematicExercises, exerciseId]);
+    const exercise = selectedDay.exercises[currentExerciseIdx];
+    if (onReportDiscomfort) {
+      onReportDiscomfort(exercise.name, painDescription, painLevel);
+    }
+    setProblematicExercises([...problematicExercises, exercise.id]);
+    setPainDescription("");
+    setPainLevel(5);
+    setShowPainModal(false);
     nextExercise();
   };
 
@@ -1483,7 +1606,7 @@ const WorkoutScreen = ({ isCoach, clientData }: { isCoach?: boolean; clientData?
         <div className="px-4 py-4 space-y-4">
           {!isCoach && (
             <button 
-              onClick={reportPain}
+              onClick={() => setShowPainModal(true)}
               className="w-full py-4 bg-red-500/10 text-red-500 border border-red-500/20 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 active:scale-95 transition-transform"
             >
               <Bell className="size-5" /> Reportar Molestia / Saltar Ejercicio
@@ -1571,6 +1694,79 @@ const WorkoutScreen = ({ isCoach, clientData }: { isCoach?: boolean; clientData?
                 >
                   GUARDAR CAMBIOS
                 </button>
+              </div>
+            </motion.div>
+          </>
+        )}
+
+        {showPainModal && (
+          <>
+            <motion.div 
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              onClick={() => setShowPainModal(false)}
+              className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[60]"
+            />
+            <motion.div 
+              initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
+              className="fixed bottom-0 left-0 right-0 bg-bg-dark border-t border-white/10 rounded-t-[32px] p-8 z-[70]"
+            >
+              <div className="flex items-center gap-3 mb-6">
+                <div className="size-12 bg-red-500/20 rounded-full flex items-center justify-center text-red-500">
+                  <Bell className="size-6" />
+                </div>
+                <div>
+                  <h3 className="text-2xl font-black italic">Reportar Molestia</h3>
+                  <p className="text-slate-400 text-sm">Cuéntale a tu coach qué sientes.</p>
+                </div>
+              </div>
+              
+              <div className="space-y-6">
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center">
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Nivel de Dolor: <span className={cn("text-sm ml-2", painLevel > 7 ? "text-red-500" : painLevel > 4 ? "text-orange-500" : "text-yellow-500")}>{painLevel}/10</span></label>
+                  </div>
+                  <div className="flex gap-1">
+                    {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((num) => (
+                      <button
+                        key={num}
+                        onClick={() => setPainLevel(num)}
+                        className={cn(
+                          "flex-1 h-10 rounded-lg text-xs font-black transition-all",
+                          painLevel === num 
+                            ? (num > 7 ? "bg-red-500 text-white" : num > 4 ? "bg-orange-500 text-white" : "bg-yellow-500 text-white")
+                            : "bg-white/5 text-slate-500 border border-white/10"
+                        )}
+                      >
+                        {num}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Descripción (Opcional)</label>
+                  <textarea 
+                    value={painDescription}
+                    onChange={(e) => setPainDescription(e.target.value)}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl p-4 text-white focus:ring-2 focus:ring-primary outline-none min-h-[120px]"
+                    placeholder="Ej: Siento un pinchazo en el hombro al bajar la barra..."
+                  />
+                </div>
+                
+                <div className="flex gap-3">
+                  <button 
+                    onClick={() => setShowPainModal(false)}
+                    className="flex-1 py-4 bg-white/5 text-white font-bold rounded-xl border border-white/10"
+                  >
+                    CANCELAR
+                  </button>
+                  <button 
+                    onClick={reportPain}
+                    className="flex-1 py-4 bg-red-500 text-white font-black rounded-xl shadow-lg shadow-red-500/20"
+                  >
+                    REPORTAR Y SALTAR
+                  </button>
+                </div>
               </div>
             </motion.div>
           </>
@@ -3154,6 +3350,7 @@ export default function App() {
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [loggedInCoach, setLoggedInCoach] = useState<Coach | null>(null);
   const [clientsList, setClientsList] = useState<Client[]>(clients);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
 
   const showNav = !['onboarding', 'login', 'welcome', 'register'].includes(screen);
 
@@ -3185,6 +3382,23 @@ export default function App() {
     // If we are updating the currently selected client, update that state too
     if (selectedClient && selectedClient.id === clientId) {
       setSelectedClient(prev => prev ? { ...prev, ...updates } : null);
+    }
+  };
+
+  const handleReportDiscomfort = (exerciseName: string, description?: string, painLevel?: number) => {
+    if (userRole === 'client') {
+      const client = clientsList[0]; // Simplified for demo
+      const newNotification: Notification = {
+        id: Date.now().toString(),
+        clientId: client.id,
+        clientName: client.name,
+        exerciseName: exerciseName,
+        description: description,
+        painLevel: painLevel,
+        timestamp: new Date(),
+        read: false,
+      };
+      setNotifications(prev => [newNotification, ...prev]);
     }
   };
 
@@ -3263,11 +3477,19 @@ export default function App() {
             <DashboardScreen 
               coach={loggedInCoach}
               clients={clientsList}
+              notifications={notifications}
               onAddClient={() => setScreen('register')} 
               onSelectClient={handleSelectClient}
+              onMarkNotificationRead={(id) => setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n))}
             />
           )}
-          {screen === 'workout' && <WorkoutScreen isCoach={isCoachViewing} clientData={selectedClient} />}
+          {screen === 'workout' && (
+            <WorkoutScreen 
+              isCoach={isCoachViewing} 
+              clientData={selectedClient} 
+              onReportDiscomfort={handleReportDiscomfort}
+            />
+          )}
           {screen === 'timer' && <TimerScreen />}
           {screen === 'nutrition' && <NutritionScreen isCoach={isCoachViewing} clientData={selectedClient} />}
           {screen === 'progress' && <ProgressScreen isCoach={isCoachViewing} clientData={selectedClient} />}

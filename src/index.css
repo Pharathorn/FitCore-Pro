@@ -20,6 +20,10 @@
 }
 
 @layer components {
+  .app-container {
+    @apply relative w-full min-h-screen mx-auto flex flex-col;
+  }
+
   .glass-panel {
     @apply bg-bg-surface/40 backdrop-blur-xl border border-white/5;
   }

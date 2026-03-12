@@ -441,7 +441,7 @@ const DashboardScreen = ({ coach, clients, notifications, onAddClient, onSelectC
   const filteredClients = clients.filter(c => {
     if (c.isDeleted) return false;
     
-    const matchesSearch = c.name.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesSearch = c?.name?.toLowerCase().includes(searchQuery.toLowerCase()) || false;
     const matchesStatus = 
       statusFilter === 'all' ? true :
       statusFilter === 'active' ? c.active :
@@ -679,12 +679,12 @@ const DashboardScreen = ({ coach, clients, notifications, onAddClient, onSelectC
                 )}
               >
                 <div className="size-12 rounded-full overflow-hidden border-2 border-primary/20">
-                  <img src={client.img} className="w-full h-full object-cover" alt={client.name} />
+                  <img src={client?.img} className="w-full h-full object-cover" alt={client?.name} />
                 </div>
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
-                    <h4 className="font-bold text-sm">{client.name}</h4>
-                    {!client.active && (
+                    <h4 className="font-bold text-sm">{client?.name}</h4>
+                    {!client?.active && (
                       <span className="text-[8px] bg-slate-500 text-white px-1.5 py-0.5 rounded-full font-bold uppercase">Inactivo</span>
                     )}
                   </div>
@@ -1250,11 +1250,13 @@ const WorkoutScreen = ({ isCoach, clientData, onReportDiscomfort }: { isCoach?: 
   };
 
   const reportPain = () => {
-    const exercise = selectedDay.exercises[currentExerciseIdx];
-    if (onReportDiscomfort) {
+    const exercise = selectedDay?.exercises?.[currentExerciseIdx];
+    if (onReportDiscomfort && exercise) {
       onReportDiscomfort(exercise.name, painDescription, painLevel);
     }
-    setProblematicExercises([...problematicExercises, exercise.id]);
+    if (exercise) {
+      setProblematicExercises([...problematicExercises, exercise.id]);
+    }
     setPainDescription("");
     setPainLevel(5);
     setShowPainModal(false);
@@ -1262,7 +1264,7 @@ const WorkoutScreen = ({ isCoach, clientData, onReportDiscomfort }: { isCoach?: 
   };
 
   const nextExercise = () => {
-    if (currentExerciseIdx < selectedDay.exercises.length - 1) {
+    if (selectedDay?.exercises?.[currentExerciseIdx + 1]) {
       const nextIdx = currentExerciseIdx + 1;
       setCurrentExerciseIdx(nextIdx);
       setSets(selectedDay.exercises[nextIdx].initialSets);
@@ -1399,7 +1401,16 @@ const WorkoutScreen = ({ isCoach, clientData, onReportDiscomfort }: { isCoach?: 
     );
   }
 
-  const currentExercise = selectedDay.exercises[currentExerciseIdx];
+  const currentExercise = selectedDay?.exercises?.[currentExerciseIdx];
+
+  if (!currentExercise && view !== 'days' && view !== 'summary') {
+    return (
+      <div className="min-h-screen bg-bg-dark text-white flex flex-col items-center justify-center p-6">
+        <p className="text-slate-400 mb-4">No se pudo cargar el ejercicio.</p>
+        <button onClick={() => setView('days')} className="bg-primary text-bg-dark px-6 py-2 rounded-xl font-bold">Volver</button>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-bg-dark text-white pb-32">
@@ -1411,10 +1422,10 @@ const WorkoutScreen = ({ isCoach, clientData, onReportDiscomfort }: { isCoach?: 
             </button>
             <div>
               <h1 className="text-lg font-bold leading-tight tracking-tight">
-                {currentExercise.name}
+                {currentExercise?.name || 'Ejercicio'}
               </h1>
               <p className="text-xs text-slate-400 font-medium">
-                {currentExerciseIdx + 1} de {selectedDay.exercises.length} Ejercicios
+                {currentExerciseIdx + 1} de {selectedDay?.exercises?.length || 0} Ejercicios
               </p>
             </div>
           </div>
@@ -1425,7 +1436,7 @@ const WorkoutScreen = ({ isCoach, clientData, onReportDiscomfort }: { isCoach?: 
       </header>
 
       <main className="max-w-2xl mx-auto w-full">
-        {!isCoach && (
+        {!isCoach && selectedDay?.exercises && (
           <div className="p-4">
             <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden flex gap-1">
               {selectedDay.exercises.map((_, i) => (
@@ -1467,13 +1478,13 @@ const WorkoutScreen = ({ isCoach, clientData, onReportDiscomfort }: { isCoach?: 
             <div className="p-5">
               <div className="flex justify-between items-start mb-6">
                 <div>
-                  <h2 className="text-2xl font-black italic tracking-tight mb-1">{currentExercise.name}</h2>
+                  <h2 className="text-2xl font-black italic tracking-tight mb-1">{currentExercise?.name}</h2>
                   <div className="flex gap-3">
                     <span className="inline-flex items-center gap-1 text-xs font-bold text-slate-400 uppercase tracking-widest">
-                      <Info className="size-3" /> {sets.length} Series • {currentExercise.reps} Reps
+                      <Info className="size-3" /> {sets.length} Series • {currentExercise?.reps} Reps
                     </span>
                     <span className="inline-flex items-center gap-1 text-xs font-bold text-primary uppercase tracking-widest">
-                      <Timer className="size-3" /> {currentExercise.rest}s Descanso
+                      <Timer className="size-3" /> {currentExercise?.rest}s Descanso
                     </span>
                   </div>
                 </div>
@@ -1617,7 +1628,7 @@ const WorkoutScreen = ({ isCoach, clientData, onReportDiscomfort }: { isCoach?: 
             <h3 className="text-xs font-black text-slate-500 uppercase tracking-[0.2em] ml-1">
               {isCoach ? 'SIGUIENTE EN LA RUTINA' : 'SIGUIENTE EJERCICIO'}
             </h3>
-            {currentExerciseIdx < selectedDay.exercises.length - 1 ? (
+            {selectedDay?.exercises?.[currentExerciseIdx + 1] ? (
               <button 
                 disabled={!allSetsCompleted && !isCoach}
                 onClick={nextExercise}
@@ -1628,10 +1639,10 @@ const WorkoutScreen = ({ isCoach, clientData, onReportDiscomfort }: { isCoach?: 
                     : "bg-white/5 border-white/5 opacity-40 grayscale cursor-not-allowed"
                 )}
               >
-                <div className="size-16 rounded-xl bg-slate-800 bg-cover bg-center shrink-0 overflow-hidden" style={{ backgroundImage: `url(${selectedDay.exercises[currentExerciseIdx + 1].video})` }}></div>
+                <div className="size-16 rounded-xl bg-slate-800 bg-cover bg-center shrink-0 overflow-hidden" style={{ backgroundImage: `url(${selectedDay?.exercises?.[currentExerciseIdx + 1]?.video})` }}></div>
                 <div className="flex-1">
-                  <h4 className="font-bold">{selectedDay.exercises[currentExerciseIdx + 1].name}</h4>
-                  <p className="text-sm text-slate-400">{selectedDay.exercises[currentExerciseIdx + 1].initialSets.length} Series • {selectedDay.exercises[currentExerciseIdx + 1].reps} Reps</p>
+                  <h4 className="font-bold">{selectedDay?.exercises?.[currentExerciseIdx + 1]?.name}</h4>
+                  <p className="text-sm text-slate-400">{selectedDay?.exercises?.[currentExerciseIdx + 1]?.initialSets?.length || 0} Series • {selectedDay?.exercises?.[currentExerciseIdx + 1]?.reps} Reps</p>
                 </div>
                 {allSetsCompleted || isCoach ? (
                   <ChevronRight className="size-5 text-primary" />
@@ -2444,8 +2455,8 @@ const NutritionScreen = ({ isCoach, clientData }: { isCoach?: boolean; clientDat
                     {meal.checked && <Check className="size-4 text-bg-dark font-bold" />}
                   </div>
                   <div className="flex flex-col">
-                    <p className={cn("font-semibold", meal.checked && !isCoach && "line-through text-slate-500")}>{meal.name}</p>
-                    <p className="text-slate-400 text-sm">{meal.desc}</p>
+                    <p className={cn("font-semibold", meal?.checked && !isCoach && "line-through text-slate-500")}>{meal?.name}</p>
+                    <p className="text-slate-400 text-sm">{meal?.desc}</p>
                   </div>
                 </div>
                 <div className="text-right flex items-center gap-3">
@@ -2504,7 +2515,7 @@ const NutritionScreen = ({ isCoach, clientData }: { isCoach?: boolean; clientDat
                       <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1 block">Nombre de la Comida</label>
                       <input 
                         type="text" 
-                        value={selectedMeal.name}
+                        value={selectedMeal?.name || ''}
                         onChange={(e) => updateMeal({ ...selectedMeal, name: e.target.value })}
                         className="w-full bg-white/5 border border-white/10 rounded-xl p-3 focus:ring-2 focus:ring-primary outline-none"
                       />
@@ -2513,7 +2524,7 @@ const NutritionScreen = ({ isCoach, clientData }: { isCoach?: boolean; clientDat
                       <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1 block">Descripción / Notas</label>
                       <input 
                         type="text" 
-                        value={selectedMeal.desc}
+                        value={selectedMeal?.desc || ''}
                         onChange={(e) => updateMeal({ ...selectedMeal, desc: e.target.value })}
                         className="w-full bg-white/5 border border-white/10 rounded-xl p-3 focus:ring-2 focus:ring-primary outline-none"
                       />
@@ -3388,17 +3399,19 @@ export default function App() {
   const handleReportDiscomfort = (exerciseName: string, description?: string, painLevel?: number) => {
     if (userRole === 'client') {
       const client = clientsList[0]; // Simplified for demo
-      const newNotification: Notification = {
-        id: Date.now().toString(),
-        clientId: client.id,
-        clientName: client.name,
-        exerciseName: exerciseName,
-        description: description,
-        painLevel: painLevel,
-        timestamp: new Date(),
-        read: false,
-      };
-      setNotifications(prev => [newNotification, ...prev]);
+      if (client && client.name) {
+        const newNotification: Notification = {
+          id: Date.now().toString(),
+          clientId: client.id,
+          clientName: client.name,
+          exerciseName: exerciseName,
+          description: description,
+          painLevel: painLevel,
+          timestamp: new Date(),
+          read: false,
+        };
+        setNotifications(prev => [newNotification, ...prev]);
+      }
     }
   };
 
@@ -3410,15 +3423,15 @@ export default function App() {
   const isCoachViewing = userRole === 'admin' && selectedClient !== null;
 
   return (
-    <div className="bg-bg-dark min-h-screen font-sans">
+    <div className="bg-bg-dark min-h-screen font-sans selection:bg-primary selection:text-bg-dark flex flex-col">
       {isCoachViewing && (
         <div className="bg-primary/10 border-b border-primary/20 px-4 py-2 flex items-center justify-between sticky top-0 z-50 backdrop-blur-md">
           <div className="flex items-center gap-2">
             <div className="size-6 rounded-full overflow-hidden border border-primary/40">
-              <img src={selectedClient.img} className="w-full h-full object-cover" alt={selectedClient.name} />
+              <img src={selectedClient?.img} className="w-full h-full object-cover" alt={selectedClient?.name} />
             </div>
             <p className="text-[10px] font-bold uppercase tracking-widest text-primary">
-              Modo Edición: <span className="text-white">{selectedClient.name}</span>
+              Modo Edición: <span className="text-white">{selectedClient?.name}</span>
             </p>
           </div>
           <div className="flex gap-2">
@@ -3447,70 +3460,77 @@ export default function App() {
           </div>
         </div>
       )}
-      <AnimatePresence mode="wait">
-        <motion.div
-          key={screen}
-          initial={{ opacity: 0, x: 10 }}
-          animate={{ opacity: 1, x: 0 }}
-          exit={{ opacity: 0, x: -10 }}
-          transition={{ duration: 0.2 }}
-        >
-          {screen === 'welcome' && (
-            <WelcomeScreen 
-              onLogin={() => setScreen('login')} 
-            />
-          )}
-          {screen === 'register' && (
-            <RegisterScreen 
-              onRegister={() => setScreen('onboarding')} 
-              onBack={() => setScreen('dashboard')}
-            />
-          )}
-          {screen === 'onboarding' && <OnboardingScreen onComplete={() => setScreen('dashboard')} />}
-          {screen === 'login' && (
-            <LoginScreen 
-              onLogin={handleLogin} 
-            />
-          )}
-          {screen === 'home' && <HomeScreen isCoach={isCoachViewing} clientData={selectedClient || (userRole === 'client' ? clientsList[0] : null)} />}
-          {screen === 'dashboard' && (
-            <DashboardScreen 
-              coach={loggedInCoach}
-              clients={clientsList}
-              notifications={notifications}
-              onAddClient={() => setScreen('register')} 
-              onSelectClient={handleSelectClient}
-              onMarkNotificationRead={(id) => setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n))}
-            />
-          )}
-          {screen === 'workout' && (
-            <WorkoutScreen 
-              isCoach={isCoachViewing} 
-              clientData={selectedClient} 
-              onReportDiscomfort={handleReportDiscomfort}
-            />
-          )}
-          {screen === 'timer' && <TimerScreen />}
-          {screen === 'nutrition' && <NutritionScreen isCoach={isCoachViewing} clientData={selectedClient} />}
-          {screen === 'progress' && <ProgressScreen isCoach={isCoachViewing} clientData={selectedClient} />}
-          {screen === 'profile' && (
-            <ProfileScreen 
-              userRole={userRole}
-              clientData={selectedClient}
-              coachData={loggedInCoach}
-              onUpdateClient={handleUpdateClient}
-              onLogout={() => {
-                setUserRole(null);
-                setSelectedClient(null);
-                setLoggedInCoach(null);
-                setScreen('welcome');
-              }}
-            />
-          )}
-        </motion.div>
-      </AnimatePresence>
+      
+      <main className="flex-1 pb-24">
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={screen}
+            initial={{ opacity: 0, x: 10 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -10 }}
+            transition={{ duration: 0.2 }}
+          >
+            {screen === 'welcome' && (
+              <WelcomeScreen 
+                onLogin={() => setScreen('login')} 
+              />
+            )}
+            {screen === 'register' && (
+              <RegisterScreen 
+                onRegister={() => setScreen('onboarding')} 
+                onBack={() => setScreen('dashboard')}
+              />
+            )}
+            {screen === 'onboarding' && <OnboardingScreen onComplete={() => setScreen('dashboard')} />}
+            {screen === 'login' && (
+              <LoginScreen 
+                onLogin={handleLogin} 
+              />
+            )}
+            {screen === 'home' && <HomeScreen isCoach={isCoachViewing} clientData={selectedClient || (userRole === 'client' ? clientsList[0] : null)} />}
+            {screen === 'dashboard' && (
+              <DashboardScreen 
+                coach={loggedInCoach}
+                clients={clientsList}
+                notifications={notifications}
+                onAddClient={() => setScreen('register')} 
+                onSelectClient={handleSelectClient}
+                onMarkNotificationRead={(id) => setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n))}
+              />
+            )}
+            {screen === 'workout' && (
+              <WorkoutScreen 
+                isCoach={isCoachViewing} 
+                clientData={selectedClient} 
+                onReportDiscomfort={handleReportDiscomfort}
+              />
+            )}
+            {screen === 'timer' && <TimerScreen />}
+            {screen === 'nutrition' && <NutritionScreen isCoach={isCoachViewing} clientData={selectedClient} />}
+            {screen === 'progress' && <ProgressScreen isCoach={isCoachViewing} clientData={selectedClient} />}
+            {screen === 'profile' && (
+              <ProfileScreen 
+                userRole={userRole}
+                clientData={selectedClient}
+                coachData={loggedInCoach}
+                onUpdateClient={handleUpdateClient}
+                onLogout={() => {
+                  setUserRole(null);
+                  setSelectedClient(null);
+                  setLoggedInCoach(null);
+                  setScreen('welcome');
+                }}
+              />
+            )}
+          </motion.div>
+        </AnimatePresence>
+      </main>
 
-      {showNav && <BottomNav active={screen} onChange={setScreen} role={userRole} />}
+      {showNav && (
+        <div className="fixed bottom-0 left-0 right-0 z-40">
+          <BottomNav active={screen} onChange={setScreen} role={userRole} />
+        </div>
+      )}
     </div>
   );
 }

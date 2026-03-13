@@ -32,6 +32,7 @@ import {
   Verified,
   ShoppingBasket,
   Check,
+  X,
   Share2,
   FileText,
   Egg,
@@ -57,7 +58,8 @@ import {
   Footprints,
   MessageCircle,
   Search,
-  Filter
+  Filter,
+  List,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { GoogleGenAI, Type } from "@google/genai";
@@ -166,6 +168,36 @@ interface Meal {
   time: string;
   checked: boolean;
   ingredients: Ingredient[];
+}
+
+interface ExerciseSet {
+  id: number;
+  kg: number;
+  reps: number;
+  rpe: number;
+  rir: number;
+  completed: boolean;
+}
+
+interface Exercise {
+  id: number;
+  name: string;
+  sets: number;
+  reps: string;
+  rest: number;
+  video: string;
+  initialSets: ExerciseSet[];
+  gifUrl?: string; // From ExerciseDB
+  bodyPart?: string;
+  equipment?: string;
+  target?: string;
+}
+
+interface WorkoutDay {
+  id: number;
+  title: string;
+  subtitle: string;
+  exercises: Exercise[];
 }
 
 interface DailyNutrition {
@@ -1269,9 +1301,9 @@ const LoginScreen = ({ onLogin }: { onLogin: (role: 'admin' | 'coach' | 'client'
 
 const WorkoutScreen = ({ isCoach, clientData, onReportDiscomfort }: { isCoach?: boolean; clientData?: Client | null; onReportDiscomfort?: (exerciseName: string, description?: string, painLevel?: number) => void }) => {
   const [view, setView] = useState<'days' | 'exercises' | 'detail' | 'summary'>('days');
-  const [selectedDay, setSelectedDay] = useState<any>(null);
+  const [selectedDay, setSelectedDay] = useState<WorkoutDay | null>(null);
   const [currentExerciseIdx, setCurrentExerciseIdx] = useState(0);
-  const [sets, setSets] = useState<any[]>([]);
+  const [sets, setSets] = useState<ExerciseSet[]>([]);
   const [restTime, setRestTime] = useState(0);
   const [isResting, setIsResting] = useState(false);
   const [problematicExercises, setProblematicExercises] = useState<number[]>([]);
@@ -1283,43 +1315,172 @@ const WorkoutScreen = ({ isCoach, clientData, onReportDiscomfort }: { isCoach?: 
   const [painDescription, setPainDescription] = useState("");
   const [painLevel, setPainLevel] = useState(5);
 
-  const [workoutDays, setWorkoutDays] = useState([
-    { 
-      id: 1, 
-      title: 'Día 1: Pecho y Tríceps', 
-      subtitle: 'Fase de Hipertrofia • Semana 3',
-      exercises: [
-        { 
-          id: 101, 
-          name: 'Flat Barbell Bench Press', 
-          sets: 3, 
-          reps: '10-12', 
-          rest: 120, 
-          video: "https://picsum.photos/seed/benchpress/800/450",
-          initialSets: [
-            { id: 1, kg: 80, reps: 10, rpe: 8, rir: 2, completed: false },
-            { id: 2, kg: 80, reps: 10, rpe: 8, rir: 2, completed: false },
-            { id: 3, kg: 80, reps: 10, rpe: 8, rir: 2, completed: false },
-          ]
-        },
-        { 
-          id: 102, 
-          name: 'Incline Dumbbell Flyes', 
-          sets: 3, 
-          reps: '12-15', 
-          rest: 90, 
-          video: "https://picsum.photos/seed/flyes/100/100",
-          initialSets: [
-            { id: 1, kg: 18, reps: 12, rpe: 7, rir: 3, completed: false },
-            { id: 2, kg: 18, reps: 12, rpe: 7, rir: 3, completed: false },
-            { id: 3, kg: 18, reps: 12, rpe: 7, rir: 3, completed: false },
-          ]
+  // ExerciseDB Integration
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [showExerciseSearch, setShowExerciseSearch] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+
+  const [workoutDays, setWorkoutDays] = useState<WorkoutDay[]>(() => {
+    const saved = localStorage.getItem(`workoutDays_${clientData?.id || 'default'}`);
+    if (saved) return JSON.parse(saved);
+    return [
+      { 
+        id: 1, 
+        title: 'Día 1: Pecho y Tríceps', 
+        subtitle: 'Fase de Hipertrofia • Semana 3',
+        exercises: [
+          { 
+            id: 101, 
+            name: 'Flat Barbell Bench Press', 
+            sets: 3, 
+            reps: '10-12', 
+            rest: 120, 
+            video: "https://picsum.photos/seed/benchpress/800/450",
+            initialSets: [
+              { id: 1, kg: 80, reps: 10, rpe: 8, rir: 2, completed: false },
+              { id: 2, kg: 80, reps: 10, rpe: 8, rir: 2, completed: false },
+              { id: 3, kg: 80, reps: 10, rpe: 8, rir: 2, completed: false },
+            ]
+          },
+          { 
+            id: 102, 
+            name: 'Incline Dumbbell Flyes', 
+            sets: 3, 
+            reps: '12-15', 
+            rest: 90, 
+            video: "https://picsum.photos/seed/flyes/100/100",
+            initialSets: [
+              { id: 1, kg: 18, reps: 12, rpe: 7, rir: 3, completed: false },
+              { id: 2, kg: 18, reps: 12, rpe: 7, rir: 3, completed: false },
+              { id: 3, kg: 18, reps: 12, rpe: 7, rir: 3, completed: false },
+            ]
+          }
+        ]
+      },
+      { id: 2, title: 'Día 2: Espalda y Bíceps', subtitle: 'Fase de Hipertrofia • Semana 3', exercises: [] },
+      { id: 3, title: 'Día 3: Pierna Completa', subtitle: 'Fase de Hipertrofia • Semana 3', exercises: [] },
+    ];
+  });
+
+  useEffect(() => {
+    localStorage.setItem(`workoutDays_${clientData?.id || 'default'}`, JSON.stringify(workoutDays));
+  }, [workoutDays, clientData?.id]);
+
+  const searchExercises = async () => {
+    if (!searchQuery.trim()) return;
+    setIsSearching(true);
+    setSearchError(null);
+    
+    const getApiKey = () => {
+      const env = (import.meta as any).env;
+      const processEnv = typeof process !== 'undefined' ? process.env : {};
+      const key = env.VITE_RAPIDAPI_KEY || (processEnv as any).VITE_RAPIDAPI_KEY || env.RAPIDAPI_KEY || (processEnv as any).RAPIDAPI_KEY;
+      return key ? key.trim() : null;
+    };
+
+    const apiKey = getApiKey();
+    
+    if (!apiKey) {
+      // Mock fallback for demo purposes
+      console.warn("API Key missing, using mock data");
+      const mockData = [
+        { id: '0001', name: 'Barbell Bench Press', bodyPart: 'chest', target: 'pectorals', equipment: 'barbell', gifUrl: 'https://v.fastcdn.co/u/f91be17b/52261477-0-Bench-Press.gif' },
+        { id: '0002', name: 'Barbell Squat', bodyPart: 'legs', target: 'glutes', equipment: 'barbell', gifUrl: 'https://v.fastcdn.co/u/f91be17b/52261482-0-Squat.gif' },
+        { id: '0003', name: 'Barbell Deadlift', bodyPart: 'back', target: 'spine', equipment: 'barbell', gifUrl: 'https://v.fastcdn.co/u/f91be17b/52261487-0-Deadlift.gif' },
+      ].filter(ex => ex.name.toLowerCase().includes(searchQuery.toLowerCase()));
+      
+      setSearchResults(mockData);
+      if (mockData.length === 0) {
+        setSearchError("No se detecta la clave VITE_RAPIDAPI_KEY. Por favor, añádela en Settings > Secrets y refresca la página.");
+      } else {
+        setSearchError("Modo Demo activo. Para usar la búsqueda real, añade tu clave en Settings > Secrets.");
+      }
+      setIsSearching(false);
+      return;
+    }
+
+    if (apiKey.length < 10 || apiKey.includes(' ')) {
+      setSearchError("La API Key parece no ser válida (demasiado corta o contiene espacios).");
+      setIsSearching(false);
+      return;
+    }
+
+    try {
+      const encodedQuery = encodeURIComponent(searchQuery.trim().toLowerCase());
+      const url = `https://exercisedb.p.rapidapi.com/exercises/name/${encodedQuery}`;
+      const options = {
+        method: 'GET',
+        headers: {
+          'X-RapidAPI-Key': apiKey.trim(),
+          'X-RapidAPI-Host': 'exercisedb.p.rapidapi.com'
         }
+      };
+      
+      console.log("Fetching exercises from:", url);
+      const response = await fetch(url, options);
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        console.error("API Error Response:", errorData);
+        
+        if (response.status === 401 || response.status === 403) {
+          throw new Error("API Key inválida o no autorizada. Revisa que esté bien copiada en los secretos.");
+        }
+        if (response.status === 429) {
+          throw new Error("Has superado el límite de peticiones gratuitas de RapidAPI.");
+        }
+        throw new Error(errorData.message || `Error del servidor: ${response.status}`);
+      }
+
+      const data = await response.json();
+      console.log("Exercises found:", data.length);
+      setSearchResults(Array.isArray(data) ? data : []);
+      
+      if (Array.isArray(data) && data.length === 0) {
+        setSearchError(`No se encontraron ejercicios para "${searchQuery}". Prueba con términos más simples como "bench", "squat" o "press".`);
+      }
+    } catch (error: any) {
+      console.error("Search Error:", error);
+      setSearchError(error.message || "Error al conectar con la base de datos de ejercicios.");
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const addExerciseToDay = (exerciseData: any) => {
+    if (!selectedDay) return;
+    
+    const newExercise: Exercise = {
+      id: Date.now(),
+      name: exerciseData.name.charAt(0).toUpperCase() + exerciseData.name.slice(1),
+      sets: 3,
+      reps: '10-12',
+      rest: 90,
+      video: exerciseData.gifUrl || "https://picsum.photos/seed/exercise/800/450",
+      gifUrl: exerciseData.gifUrl,
+      bodyPart: exerciseData.bodyPart,
+      equipment: exerciseData.equipment,
+      target: exerciseData.target,
+      initialSets: [
+        { id: 1, kg: 0, reps: 10, rpe: 8, rir: 2, completed: false },
+        { id: 2, kg: 0, reps: 10, rpe: 8, rir: 2, completed: false },
+        { id: 3, kg: 0, reps: 10, rpe: 8, rir: 2, completed: false },
       ]
-    },
-    { id: 2, title: 'Día 2: Espalda y Bíceps', subtitle: 'Fase de Hipertrofia • Semana 3', exercises: [] },
-    { id: 3, title: 'Día 3: Pierna Completa', subtitle: 'Fase de Hipertrofia • Semana 3', exercises: [] },
-  ]);
+    };
+
+    const updatedDays = workoutDays.map(d => {
+      if (d.id === selectedDay.id) {
+        return { ...d, exercises: [...d.exercises, newExercise] };
+      }
+      return d;
+    });
+    
+    setWorkoutDays(updatedDays);
+    setSelectedDay({ ...selectedDay, exercises: [...selectedDay.exercises, newExercise] });
+    setShowExerciseSearch(false);
+  };
 
   useEffect(() => {
     let timer: any;
@@ -1342,10 +1503,12 @@ const WorkoutScreen = ({ isCoach, clientData, onReportDiscomfort }: { isCoach?: 
     return () => clearInterval(timer);
   }, [isResting, restTime, isCoach]);
 
-  const startWorkout = (day: any) => {
+  const startWorkout = (day: WorkoutDay) => {
     setSelectedDay(day);
     setCurrentExerciseIdx(0);
-    if (day.exercises.length > 0) {
+    if (isCoach) {
+      setView('exercises');
+    } else if (day.exercises.length > 0) {
       setSets(day.exercises[0].initialSets);
       setVideoUrl(day.exercises[0].video);
       setView('detail');
@@ -1406,10 +1569,11 @@ const WorkoutScreen = ({ isCoach, clientData, onReportDiscomfort }: { isCoach?: 
     }
   };
 
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<number | null>(null);
+
   const deleteWorkoutDay = (id: number) => {
-    if (window.confirm('¿Estás seguro de que quieres eliminar este día de entrenamiento completo?')) {
-      setWorkoutDays(workoutDays.filter(d => d.id !== id));
-    }
+    setWorkoutDays(workoutDays.filter(d => d.id !== id));
+    setShowDeleteConfirm(null);
   };
 
   const addWorkoutDay = () => {
@@ -1421,6 +1585,65 @@ const WorkoutScreen = ({ isCoach, clientData, onReportDiscomfort }: { isCoach?: 
       exercises: []
     };
     setWorkoutDays([...workoutDays, newDay]);
+  };
+
+  const saveVideoUrl = () => {
+    if (!selectedDay) return;
+    const updatedExercises = selectedDay.exercises.map((ex, idx) => 
+      idx === currentExerciseIdx ? { ...ex, video: videoUrl } : ex
+    );
+    const updatedDays = workoutDays.map(d => 
+      d.id === selectedDay.id ? { ...d, exercises: updatedExercises } : d
+    );
+    setWorkoutDays(updatedDays);
+    setSelectedDay({ ...selectedDay, exercises: updatedExercises });
+    setShowVideoEditor(false);
+  };
+
+  const renderExerciseMedia = () => {
+    if (!videoUrl) return null;
+
+    const isYoutube = videoUrl.includes('youtube.com') || videoUrl.includes('youtu.be');
+    const isVimeo = videoUrl.includes('vimeo.com');
+    const isGif = videoUrl.toLowerCase().endsWith('.gif') || videoUrl.includes('exercisedb');
+
+    if (isYoutube) {
+      let videoId = '';
+      if (videoUrl.includes('v=')) {
+        videoId = videoUrl.split('v=')[1].split('&')[0];
+      } else if (videoUrl.includes('youtu.be/')) {
+        videoId = videoUrl.split('youtu.be/')[1].split('?')[0];
+      }
+      return (
+        <iframe 
+          src={`https://www.youtube.com/embed/${videoId}`}
+          className="absolute inset-0 w-full h-full"
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+          allowFullScreen
+        />
+      );
+    }
+
+    if (isVimeo) {
+      const videoId = videoUrl.split('/').pop();
+      return (
+        <iframe 
+          src={`https://player.vimeo.com/video/${videoId}`}
+          className="absolute inset-0 w-full h-full"
+          allow="autoplay; fullscreen; picture-in-picture"
+          allowFullScreen
+        />
+      );
+    }
+
+    return (
+      <img 
+        src={videoUrl} 
+        className="absolute inset-0 w-full h-full object-cover" 
+        alt="Exercise Media" 
+        referrerPolicy="no-referrer"
+      />
+    );
   };
 
   const allSetsCompleted = sets.length > 0 && sets.every(s => s.completed);
@@ -1458,16 +1681,42 @@ const WorkoutScreen = ({ isCoach, clientData, onReportDiscomfort }: { isCoach?: 
                 </div>
               </button>
               {isCoach && (
-                <button 
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    deleteWorkoutDay(day.id);
-                  }}
-                  className="absolute top-4 right-12 p-2 text-red-500/40 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all"
-                  title="Eliminar día"
-                >
-                  <Trash2 className="size-5" />
-                </button>
+                <div className="absolute top-4 right-12 flex gap-2">
+                  {showDeleteConfirm === day.id ? (
+                    <div className="flex items-center gap-2 bg-red-500 rounded-lg px-3 py-1 animate-in fade-in slide-in-from-right-2">
+                      <span className="text-[10px] font-bold text-white uppercase">¿Borrar?</span>
+                      <button 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          deleteWorkoutDay(day.id);
+                        }}
+                        className="p-1 hover:bg-white/20 rounded text-white"
+                      >
+                        <Check className="size-4" />
+                      </button>
+                      <button 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setShowDeleteConfirm(null);
+                        }}
+                        className="p-1 hover:bg-white/20 rounded text-white"
+                      >
+                        <X className="size-4" />
+                      </button>
+                    </div>
+                  ) : (
+                    <button 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowDeleteConfirm(day.id);
+                      }}
+                      className="p-2 text-red-500/40 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all"
+                      title="Eliminar día"
+                    >
+                      <Trash2 className="size-5" />
+                    </button>
+                  )}
+                </div>
               )}
             </div>
           ))}
@@ -1485,6 +1734,186 @@ const WorkoutScreen = ({ isCoach, clientData, onReportDiscomfort }: { isCoach?: 
     );
   }
 
+  if (view === 'exercises') {
+    return (
+      <div className="min-h-screen bg-bg-dark text-white pb-32">
+        <header className="p-6 flex items-center gap-4 border-b border-white/5 bg-bg-dark/80 backdrop-blur-md sticky top-0 z-10">
+          <button onClick={() => setView('days')} className="p-2 hover:bg-white/10 rounded-full transition-colors">
+            <ArrowLeft className="size-6" />
+          </button>
+          <div>
+            <h1 className="text-xl font-black italic tracking-tight">{selectedDay?.title}</h1>
+            <p className="text-xs text-slate-500 font-bold uppercase tracking-widest">Gestión de Ejercicios</p>
+          </div>
+        </header>
+
+        <main className="p-4 space-y-4">
+          <div className="space-y-3">
+            {selectedDay?.exercises.map((ex, idx) => (
+              <div key={ex.id} className="glass-card rounded-2xl p-4 flex items-center gap-4 border border-white/5">
+                <div className="size-16 rounded-xl bg-slate-800 bg-cover bg-center overflow-hidden" style={{ backgroundImage: `url(${ex.video})` }}></div>
+                <div className="flex-1">
+                  <h4 className="font-bold">{ex.name}</h4>
+                  <p className="text-xs text-slate-400">{ex.sets} Series • {ex.reps} Reps • {ex.rest}s</p>
+                </div>
+                <div className="flex gap-2">
+                  <button 
+                    onClick={() => {
+                      setCurrentExerciseIdx(idx);
+                      setSets(ex.initialSets);
+                      setVideoUrl(ex.video);
+                      setView('detail');
+                    }}
+                    className="p-2 text-primary hover:bg-primary/10 rounded-lg transition-all"
+                  >
+                    <Settings className="size-5" />
+                  </button>
+                  <button 
+                    onClick={() => {
+                      const updatedExercises = selectedDay.exercises.filter(e => e.id !== ex.id);
+                      const updatedDays = workoutDays.map(d => d.id === selectedDay.id ? { ...d, exercises: updatedExercises } : d);
+                      setWorkoutDays(updatedDays);
+                      setSelectedDay({ ...selectedDay, exercises: updatedExercises });
+                    }}
+                    className="p-2 text-red-500 hover:bg-red-500/10 rounded-lg transition-all"
+                  >
+                    <Trash2 className="size-5" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <button 
+            onClick={() => setShowExerciseSearch(true)}
+            className="w-full py-6 border-2 border-dashed border-white/10 rounded-2xl text-primary font-bold flex flex-col items-center gap-2 hover:bg-primary/5 hover:border-primary/40 transition-all"
+          >
+            <PlusCircle className="size-8" />
+            <span>Añadir Ejercicio de la Base de Datos</span>
+          </button>
+
+          <button 
+            onClick={() => {
+              const newEx: Exercise = {
+                id: Date.now(),
+                name: 'Nuevo Ejercicio',
+                sets: 3,
+                reps: '10-12',
+                rest: 90,
+                video: 'https://picsum.photos/seed/exercise/800/450',
+                initialSets: [
+                  { id: 1, kg: 0, reps: 10, rpe: 8, rir: 2, completed: false },
+                  { id: 2, kg: 0, reps: 10, rpe: 8, rir: 2, completed: false },
+                  { id: 3, kg: 0, reps: 10, rpe: 8, rir: 2, completed: false },
+                ]
+              };
+              const updatedExercises = [...selectedDay!.exercises, newEx];
+              const updatedDays = workoutDays.map(d => d.id === selectedDay!.id ? { ...d, exercises: updatedExercises } : d);
+              setWorkoutDays(updatedDays);
+              setSelectedDay({ ...selectedDay!, exercises: updatedExercises });
+            }}
+            className="w-full py-4 bg-white/5 border border-white/10 rounded-2xl text-white font-bold text-sm hover:bg-white/10 transition-all"
+          >
+            Añadir Ejercicio Manualmente
+          </button>
+        </main>
+
+        <AnimatePresence>
+          {showExerciseSearch && (
+            <>
+              <motion.div 
+                initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                onClick={() => setShowExerciseSearch(false)}
+                className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[80]"
+              />
+              <motion.div 
+                initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
+                className="fixed bottom-0 left-0 right-0 bg-bg-dark border-t border-white/10 rounded-t-[32px] p-6 z-[90] max-h-[90vh] overflow-y-auto"
+              >
+                <div className="w-12 h-1.5 bg-white/10 rounded-full mx-auto mb-6" />
+                <h3 className="text-2xl font-black italic mb-6">Buscar Ejercicios</h3>
+                
+                <div className="flex gap-2 mb-6">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 size-5 text-slate-500" />
+                    <input 
+                      type="text" 
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && searchExercises()}
+                      placeholder="Ej: Bench press, Squat..."
+                      className="w-full h-14 bg-white/5 border border-white/10 rounded-xl pl-12 pr-4 text-white focus:ring-2 focus:ring-primary outline-none"
+                    />
+                  </div>
+                  <button 
+                    onClick={searchExercises}
+                    disabled={isSearching}
+                    className="bg-primary text-bg-dark px-6 rounded-xl font-black disabled:opacity-50"
+                  >
+                    {isSearching ? '...' : 'BUSCAR'}
+                  </button>
+                </div>
+
+                <div className="space-y-4">
+                  <button 
+                    onClick={() => {
+                      const newEx = {
+                        name: searchQuery || 'Nuevo Ejercicio',
+                        bodyPart: 'Personalizado',
+                        target: 'Varios',
+                        equipment: 'Varios',
+                        gifUrl: 'https://picsum.photos/seed/exercise/800/450'
+                      };
+                      addExerciseToDay(newEx);
+                    }}
+                    className="w-full py-4 bg-primary/10 border border-primary/20 rounded-2xl text-primary font-bold text-sm hover:bg-primary/20 transition-all flex items-center justify-center gap-2"
+                  >
+                    <Plus className="size-5" />
+                    Añadir "{searchQuery || 'Nuevo Ejercicio'}" Manualmente
+                  </button>
+
+                  {searchError && (
+                    <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-500 text-sm flex items-start gap-3">
+                      <Info className="size-5 shrink-0 mt-0.5" />
+                      <p>{searchError}</p>
+                    </div>
+                  )}
+
+                  {searchResults.length > 0 ? searchResults.map((ex) => (
+                    <button 
+                      key={ex.id}
+                      onClick={() => addExerciseToDay(ex)}
+                      className="w-full glass-card rounded-2xl p-4 flex items-center gap-4 border border-white/5 hover:border-primary/30 transition-all text-left"
+                    >
+                      <img 
+                        src={ex.gifUrl} 
+                        className="size-20 rounded-xl object-cover bg-slate-800" 
+                        alt={ex.name} 
+                        referrerPolicy="no-referrer"
+                      />
+                      <div className="flex-1">
+                        <h4 className="font-bold text-lg leading-tight">{ex.name.charAt(0).toUpperCase() + ex.name.slice(1)}</h4>
+                        <div className="flex flex-wrap gap-2 mt-2">
+                          <span className="bg-primary/10 text-primary text-[8px] font-black uppercase px-2 py-1 rounded-md">{ex.bodyPart}</span>
+                          <span className="bg-white/5 text-slate-400 text-[8px] font-black uppercase px-2 py-1 rounded-md">{ex.target}</span>
+                          <span className="bg-white/5 text-slate-400 text-[8px] font-black uppercase px-2 py-1 rounded-md">{ex.equipment}</span>
+                        </div>
+                      </div>
+                      <Plus className="size-6 text-primary" />
+                    </button>
+                  )) : searchQuery && !isSearching && !searchError && (
+                    <div className="text-center py-12 text-slate-500">
+                      <p>No se encontraron ejercicios.</p>
+                    </div>
+                  )}
+                </div>
+              </motion.div>
+            </>
+          )}
+        </AnimatePresence>
+      </div>
+    );
+  }
   if (view === 'summary') {
     return (
       <div className="min-h-screen bg-bg-dark text-white p-6 flex flex-col">
@@ -1547,7 +1976,7 @@ const WorkoutScreen = ({ isCoach, clientData, onReportDiscomfort }: { isCoach?: 
       <header className="sticky top-0 z-10 bg-bg-dark/80 backdrop-blur-md border-b border-white/10">
         <div className="flex items-center p-4 justify-between max-w-2xl mx-auto w-full">
           <div className="flex items-center gap-3">
-            <button onClick={() => setView('days')} className="flex items-center justify-center size-10 rounded-full hover:bg-white/10 transition-colors">
+            <button onClick={() => setView(isCoach ? 'exercises' : 'days')} className="flex items-center justify-center size-10 rounded-full hover:bg-white/10 transition-colors">
               <ChevronLeft className="size-6" />
             </button>
             <div>
@@ -1559,9 +1988,20 @@ const WorkoutScreen = ({ isCoach, clientData, onReportDiscomfort }: { isCoach?: 
               </p>
             </div>
           </div>
-          <button className="flex size-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
-            <History className="size-5" />
-          </button>
+          <div className="flex gap-2">
+            {isCoach && (
+              <button 
+                onClick={() => setView('exercises')}
+                className="flex size-10 items-center justify-center rounded-lg bg-white/5 text-slate-400 hover:text-primary transition-colors"
+                title="Gestionar Ejercicios"
+              >
+                <List className="size-5" />
+              </button>
+            )}
+            <button className="flex size-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              <History className="size-5" />
+            </button>
+          </div>
         </div>
       </header>
 
@@ -1585,36 +2025,77 @@ const WorkoutScreen = ({ isCoach, clientData, onReportDiscomfort }: { isCoach?: 
         <div className="px-4 py-2">
           <div className="glass-card rounded-2xl overflow-hidden border border-white/5">
             <div className="relative aspect-video w-full bg-slate-900 flex items-center justify-center group">
-              <img 
-                src={videoUrl} 
-                className="absolute inset-0 w-full h-full object-cover opacity-60" 
-                alt="Exercise Video" 
-              />
-              <div className="absolute inset-0 bg-black/40"></div>
-              <button className="relative z-10 flex shrink-0 items-center justify-center rounded-full size-16 bg-primary text-bg-dark shadow-lg hover:scale-110 transition-transform">
-                <Play className="size-8 fill-current" />
-              </button>
+              {renderExerciseMedia()}
+              
               {isCoach && (
                 <button 
                   onClick={() => setShowVideoEditor(true)}
-                  className="absolute top-4 right-4 bg-black/60 backdrop-blur-md p-2 rounded-lg text-white hover:text-primary transition-colors"
+                  className="absolute top-4 right-4 bg-black/60 backdrop-blur-md p-2 rounded-lg text-white hover:text-primary transition-colors z-20"
                 >
                   <Settings className="size-5" />
                 </button>
               )}
-              <div className="absolute bottom-3 left-3 bg-black/60 backdrop-blur-sm px-2 py-1 rounded text-[10px] font-bold text-white uppercase tracking-widest">VÍDEO DE TÉCNICA</div>
+              <div className="absolute bottom-3 left-3 bg-black/60 backdrop-blur-sm px-2 py-1 rounded text-[10px] font-bold text-white uppercase tracking-widest z-20">VÍDEO DE TÉCNICA</div>
             </div>
 
             <div className="p-5">
               <div className="flex justify-between items-start mb-6">
                 <div>
-                  <h2 className="text-2xl font-black italic tracking-tight mb-1">{currentExercise?.name}</h2>
-                  <div className="flex gap-3">
+                  {isCoach ? (
+                    <input 
+                      className="text-2xl font-black italic tracking-tight mb-1 bg-transparent border-b border-white/10 w-full outline-none focus:border-primary"
+                      value={currentExercise?.name}
+                      onChange={(e) => {
+                        const updatedExercises = selectedDay!.exercises.map((ex, idx) => 
+                          idx === currentExerciseIdx ? { ...ex, name: e.target.value } : ex
+                        );
+                        const updatedDays = workoutDays.map(d => d.id === selectedDay!.id ? { ...d, exercises: updatedExercises } : d);
+                        setWorkoutDays(updatedDays);
+                        setSelectedDay({ ...selectedDay!, exercises: updatedExercises });
+                      }}
+                    />
+                  ) : (
+                    <h2 className="text-2xl font-black italic tracking-tight mb-1">{currentExercise?.name}</h2>
+                  )}
+                  <div className="flex gap-3 items-center">
                     <span className="inline-flex items-center gap-1 text-xs font-bold text-slate-400 uppercase tracking-widest">
-                      <Info className="size-3" /> {sets.length} Series • {currentExercise?.reps} Reps
+                      <Info className="size-3" /> {sets.length} Series • 
+                      {isCoach ? (
+                        <input 
+                          className="bg-transparent border-b border-white/10 w-16 outline-none focus:border-primary ml-1"
+                          value={currentExercise?.reps}
+                          onChange={(e) => {
+                            const updatedExercises = selectedDay!.exercises.map((ex, idx) => 
+                              idx === currentExerciseIdx ? { ...ex, reps: e.target.value } : ex
+                            );
+                            const updatedDays = workoutDays.map(d => d.id === selectedDay!.id ? { ...d, exercises: updatedExercises } : d);
+                            setWorkoutDays(updatedDays);
+                            setSelectedDay({ ...selectedDay!, exercises: updatedExercises });
+                          }}
+                        />
+                      ) : (
+                        ` ${currentExercise?.reps}`
+                      )} Reps
                     </span>
                     <span className="inline-flex items-center gap-1 text-xs font-bold text-primary uppercase tracking-widest">
-                      <Timer className="size-3" /> {currentExercise?.rest}s Descanso
+                      <Timer className="size-3" /> 
+                      {isCoach ? (
+                        <input 
+                          type="number"
+                          className="bg-transparent border-b border-primary/30 w-12 outline-none focus:border-primary ml-1 text-primary"
+                          value={currentExercise?.rest}
+                          onChange={(e) => {
+                            const updatedExercises = selectedDay!.exercises.map((ex, idx) => 
+                              idx === currentExerciseIdx ? { ...ex, rest: parseInt(e.target.value) || 0 } : ex
+                            );
+                            const updatedDays = workoutDays.map(d => d.id === selectedDay!.id ? { ...d, exercises: updatedExercises } : d);
+                            setWorkoutDays(updatedDays);
+                            setSelectedDay({ ...selectedDay!, exercises: updatedExercises });
+                          }}
+                        />
+                      ) : (
+                        ` ${currentExercise?.rest}`
+                      )}s Descanso
                     </span>
                   </div>
                 </div>
@@ -1830,7 +2311,7 @@ const WorkoutScreen = ({ isCoach, clientData, onReportDiscomfort }: { isCoach?: 
                   <Camera className="size-5" /> Seleccionar Archivo MP4/MOV
                 </button>
                 <button 
-                  onClick={() => setShowVideoEditor(false)}
+                  onClick={saveVideoUrl}
                   className="w-full py-4 bg-primary text-bg-dark font-black rounded-xl mt-4"
                 >
                   GUARDAR CAMBIOS

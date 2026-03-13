@@ -174,6 +174,8 @@ interface DailyNutrition {
 }
 
 // --- Constants & Data ---
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
+
 const coaches: Coach[] = [
   { id: 'c1', name: 'Coach Alex (Admin)', phone: '34600000000', img: 'https://picsum.photos/seed/coach1/100/100', role: 'admin' },
   { id: 'c2', name: 'Coach Maria', phone: '34611111111', img: 'https://picsum.photos/seed/coach2/100/100', role: 'coach' },
@@ -200,9 +202,11 @@ const BottomNav = ({ active, onChange, role, clientData }: { active: Screen; onC
     { id: 'progress', label: 'Progreso', icon: TrendingUp, section: 'progress' },
     { id: 'profile', label: 'Perfil', icon: User },
   ].filter(item => {
-    if (isCoach) return true; // Coaches see everything
-    if (!item.section) return true; // Profile and Home are always visible
-    return clientData?.enabledSections?.[item.section as keyof EnabledSections] ?? true;
+    if (!item.section) return true; // Profile and Home/Dashboard are always visible
+    if (clientData) {
+      return clientData.enabledSections?.[item.section as keyof EnabledSections] ?? true;
+    }
+    return isCoach; // Coaches see everything on dashboard if no client selected
   });
 
   return (
@@ -726,28 +730,32 @@ const DashboardScreen = ({
           {filteredClients.length > 0 ? (
             filteredClients.map((client, i) => (
               <div key={i} className="relative">
-                <button 
-                  onClick={() => onSelectClient(client)}
+                <div 
                   className={cn(
-                    "w-full flex items-center gap-4 p-4 glass-card rounded-xl text-left transition-all hover:bg-white/5 active:scale-[0.98]",
+                    "w-full flex items-center gap-4 p-4 glass-card rounded-xl transition-all hover:bg-white/5",
                     !client.active && "opacity-60 grayscale-[0.5]"
                   )}
                 >
-                  <div className="size-12 rounded-full overflow-hidden border-2 border-primary/20">
-                    <img src={client?.img} className="w-full h-full object-cover" alt={client?.name} />
-                  </div>
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <h4 className="font-bold text-sm">{client?.name}</h4>
-                      {!client?.active && (
-                        <span className="text-[8px] bg-slate-500 text-white px-1.5 py-0.5 rounded-full font-bold uppercase">Inactivo</span>
-                      )}
+                  <div 
+                    className="flex-1 flex items-center gap-4 cursor-pointer"
+                    onClick={() => onSelectClient(client)}
+                  >
+                    <div className="size-12 rounded-full overflow-hidden border-2 border-primary/20">
+                      <img src={client?.img} className="w-full h-full object-cover" alt={client?.name} />
                     </div>
-                    <p className="text-slate-400 text-xs mt-0.5">{client.program}</p>
-                    <div className="flex gap-2 mt-2">
-                      {client.enabledSections.training && <Dumbbell className="size-3 text-primary" />}
-                      {client.enabledSections.nutrition && <Utensils className="size-3 text-primary" />}
-                      {client.enabledSections.progress && <TrendingUp className="size-3 text-primary" />}
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <h4 className="font-bold text-sm">{client?.name}</h4>
+                        {!client?.active && (
+                          <span className="text-[8px] bg-slate-500 text-white px-1.5 py-0.5 rounded-full font-bold uppercase">Inactivo</span>
+                        )}
+                      </div>
+                      <p className="text-slate-400 text-xs mt-0.5">{client.program}</p>
+                      <div className="flex gap-2 mt-2">
+                        {client.enabledSections.training && <Dumbbell className="size-3 text-primary" />}
+                        {client.enabledSections.nutrition && <Utensils className="size-3 text-primary" />}
+                        {client.enabledSections.progress && <TrendingUp className="size-3 text-primary" />}
+                      </div>
                     </div>
                   </div>
                   <div className="flex flex-col gap-2 items-end">
@@ -779,7 +787,7 @@ const DashboardScreen = ({
                       </button>
                     )}
                   </div>
-                </button>
+                </div>
                 
                 <AnimatePresence>
                   {editingSections === client.id && (
@@ -2266,38 +2274,44 @@ const NutritionScreen = ({ isCoach, clientData }: { isCoach?: boolean; clientDat
       localStorage.setItem(`nutritionPdf_${clientData?.id || 'default'}`, base64);
 
       try {
-        const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
         const response = await ai.models.generateContent({
           model: "gemini-3-flash-preview",
           contents: [
             {
               inlineData: {
                 data: base64.split(',')[1],
-                mimeType: "application/pdf"
+                mimeType: file.type || "application/pdf"
               }
             },
             {
-              text: `Extract the nutrition plan from this PDF. 
-              Return a JSON array of exactly 7 objects (one for each day of the week, starting Monday). 
-              Each object MUST have:
-              - 'day': string (e.g. 'Lunes')
-              - 'meals': array of objects
-              
-              Each meal object MUST have:
-              - 'name': string (e.g. 'Desayuno', 'Media Mañana', 'Comida', 'Merienda', 'Cena')
-              - 'desc': string (short description of the meal)
-              - 'time': string (e.g. '08:00', '14:30')
-              - 'kcal': number (estimated total calories for the meal)
-              - 'ingredients': array of objects
-              
-              Each ingredient object MUST have:
-              - 'name': string (the food item)
-              - 'amount': string (e.g. '100g', '2 unidades', '1 cucharada')
-              - 'protein': number (grams of protein)
-              - 'carbs': number (grams of carbohydrates)
-              - 'fats': number (grams of fats)
-              
-              Ensure the output is ONLY the JSON array. If a day is missing in the PDF, return an empty meals array for that day.`
+              text: `Analiza este documento de nutrición y extrae el plan semanal y los objetivos macro.
+              Devuelve un objeto JSON con esta estructura exacta:
+              {
+                "targets": {
+                  "protein": 150,
+                  "carbs": 250,
+                  "fats": 70,
+                  "kcal": 2200
+                },
+                "days": [
+                  {
+                    "day": "Lunes",
+                    "meals": [
+                      {
+                        "name": "Desayuno",
+                        "desc": "Descripción",
+                        "time": "08:00",
+                        "kcal": 500,
+                        "ingredients": [
+                          { "name": "Avena", "amount": "100g", "protein": 10, "carbs": 60, "fats": 5 }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+              Extrae los 7 días de la semana. Si falta información, estímala profesionalmente basándote en el contexto.
+              Asegúrate de que los targets sean la suma media diaria o los objetivos explícitos mencionados.`
             }
           ],
           config: {
@@ -2306,15 +2320,24 @@ const NutritionScreen = ({ isCoach, clientData }: { isCoach?: boolean; clientDat
         });
 
         const parsed = JSON.parse(response.text);
-        if (Array.isArray(parsed)) {
-          setNutritionPlan(parsed.map((d: any, i: number) => ({
-            day: days[i],
+        if (parsed.days && Array.isArray(parsed.days)) {
+          setNutritionPlan(parsed.days.map((d: any, i: number) => ({
+            day: days[i] || d.day,
             meals: d.meals.map((m: any) => ({ ...m, checked: false }))
           })));
         }
+        if (parsed.targets) {
+          setTargets(parsed.targets);
+        }
+
+        const toast = document.createElement('div');
+        toast.className = 'fixed bottom-24 left-1/2 -translate-x-1/2 bg-primary text-bg-dark px-6 py-3 rounded-full font-bold shadow-xl z-[100] animate-bounce';
+        toast.innerText = '✓ Plan y objetivos importados con IA';
+        document.body.appendChild(toast);
+        setTimeout(() => toast.remove(), 3000);
       } catch (error) {
-        console.error("Error parsing PDF:", error);
-        alert("Error al procesar el PDF. Asegúrate de que el formato sea legible.");
+        console.error("Error parsing nutrition document:", error);
+        alert("Error al procesar el documento con IA. Asegúrate de que sea legible.");
       } finally {
         setIsParsingPdf(false);
       }
@@ -2497,8 +2520,8 @@ const NutritionScreen = ({ isCoach, clientData }: { isCoach?: boolean; clientDat
           <div className="flex gap-3">
             <label className="flex-1 flex items-center justify-center gap-2 bg-white/5 border border-dashed border-white/20 rounded-xl p-4 cursor-pointer hover:border-primary/40 transition-all">
               <Upload className="size-5 text-primary" />
-              <span className="text-sm font-bold">{isParsingPdf ? 'Procesando...' : 'Subir PDF Nutrición'}</span>
-              <input type="file" accept=".pdf" className="hidden" onChange={handlePdfUpload} disabled={isParsingPdf} />
+              <span className="text-sm font-bold">{isParsingPdf ? 'Procesando...' : 'Importar con IA (PDF/Imagen)'}</span>
+              <input type="file" accept=".pdf,image/*" className="hidden" onChange={handlePdfUpload} disabled={isParsingPdf} />
             </label>
             {pdfUrl && (
               <button 
@@ -3564,7 +3587,7 @@ export default function App() {
     setScreen('home');
   };
 
-  const isCoachViewing = (userRole === 'admin' || userRole === 'coach') && selectedClient !== null;
+  const isCoachViewing = (userRole === 'admin' || userRole === 'coach') && selectedClient !== null && screen !== 'dashboard';
 
   return (
     <div className="bg-bg-dark min-h-screen font-sans selection:bg-primary selection:text-bg-dark flex flex-col">
@@ -3594,7 +3617,6 @@ export default function App() {
             </button>
             <button 
               onClick={() => {
-                setSelectedClient(null);
                 setScreen('dashboard');
               }}
               className="text-[10px] font-bold uppercase tracking-widest bg-primary text-bg-dark px-3 py-1 rounded"

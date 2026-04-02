@@ -460,7 +460,7 @@ interface DailyNutrition {
 // --- Constants & Data ---
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
 
-const coaches: Coach[] = [
+const DEFAULT_COACHES: Coach[] = [
   { id: 'c1', name: 'Coach Alex (Admin)', phone: '34600000000', img: 'https://picsum.photos/seed/coach1/100/100', role: 'admin' },
   { id: 'c2', name: 'Coach Maria', phone: '34611111111', img: 'https://picsum.photos/seed/coach2/100/100', role: 'coach' },
   { id: 'c3', name: 'Coach Juan', phone: '34622222222', img: 'https://picsum.photos/seed/coach3/100/100', role: 'coach' }
@@ -472,7 +472,7 @@ const commonEquipment = [
 
 const defaultSections: EnabledSections = { training: true, nutrition: true, progress: true };
 
-const clients: Client[] = [
+const DEFAULT_CLIENTS: Client[] = [
   { id: '1', name: 'Sarah Jenkins', program: 'Powerlifting • Phase 2', status: 'Today', active: true, img: 'https://picsum.photos/seed/sarah/100/100', weight: '64.2 kg', bodyFat: '21.4%', stepsTarget: 10000, waterTarget: 2.5, assignedCoachId: 'c1', enabledSections: defaultSections },
   { id: '2', name: 'Marcus Chen', program: 'Hypertrophy • Week 4', status: '2 days ago', active: false, img: 'https://picsum.photos/seed/marcus/100/100', weight: '82.5 kg', bodyFat: '15.2%', stepsTarget: 8000, waterTarget: 3.0, assignedCoachId: 'c2', enabledSections: { ...defaultSections, nutrition: false } },
   { id: '3', name: 'Elena Rodriguez', program: 'Endurance • Advanced', status: 'Yesterday', active: true, img: 'https://picsum.photos/seed/elena/100/100', weight: '58.0 kg', bodyFat: '18.5%', stepsTarget: 12000, waterTarget: 2.0, assignedCoachId: 'c1', enabledSections: { ...defaultSections, training: false } },
@@ -596,7 +596,7 @@ const BottomNav = ({ active, onChange, role, clientData }: { active: Screen; onC
   );
 };
 
-const HomeScreen = ({ clientData, isCoach }: { clientData: Client | null; isCoach?: boolean }) => {
+const HomeScreen = ({ clientData, isCoach, coaches }: { clientData: Client | null; isCoach?: boolean; coaches: Coach[] }) => {
   const assignedCoach = coaches.find(c => c.id === clientData?.assignedCoachId);
   const [dailyLog, setDailyLog] = useState<DailyLog>(() => {
     const today = new Date().toISOString().split('T')[0];
@@ -1645,9 +1645,10 @@ const OnboardingScreen = ({ onComplete }: { onComplete: () => void }) => {
   );
 };
 
-const LoginScreen = ({ setToast, onLogin }: { 
+const LoginScreen = ({ setToast, onLogin, coaches }: { 
   setToast: (toast: { show: boolean; message: string; type: 'success' | 'error' }) => void;
   onLogin: (email: string, role: 'admin' | 'coach' | 'client', data: any) => void;
+  coaches: Coach[];
 }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -1670,14 +1671,15 @@ const LoginScreen = ({ setToast, onLogin }: {
     setError('');
     setLoading(true);
 
-    // Mock login logic
+    // Mock login logic using the provided coaches list
     setTimeout(() => {
       if (email === 'admin@admin.com' && password === '123') {
-        onLogin(email, 'admin', coaches[0]);
+        onLogin(email, 'admin', coaches.find(c => c.role === 'admin') || coaches[0]);
       } else if (email === 'coach@coach.com' && password === '123') {
-        onLogin(email, 'coach', coaches[1]);
+        onLogin(email, 'coach', coaches.find(c => c.role === 'coach') || coaches[1]);
       } else if (email === 'client@client.com' && password === '123') {
-        onLogin(email, 'client', clients[0]);
+        // Clients are still mocked for now, but we could also use a clientsList here
+        onLogin(email, 'client', DEFAULT_CLIENTS[0]);
       } else {
         setError('Credenciales incorrectas. Prueba con admin@admin.com / 123');
       }
@@ -5128,7 +5130,7 @@ const ProgressScreen = ({ isCoach, clientData }: { isCoach?: boolean; clientData
   );
 };
 
-const ProfileScreen = ({ userRole, clientData, coachData, onUpdateClient, onLogout, onNavigate, darkMode, onToggleDarkMode }: { userRole: 'admin' | 'coach' | 'client' | null; clientData: Client | null; coachData: Coach | null; onUpdateClient: (id: string, updates: Partial<Client>) => void; onLogout: () => void; onNavigate?: (s: Screen) => void; darkMode: boolean; onToggleDarkMode: () => void }) => {
+const ProfileScreen = ({ userRole, clientData, coachData, onUpdateClient, onUpdateCoach, onLogout, onNavigate, darkMode, onToggleDarkMode, coaches }: { userRole: 'admin' | 'coach' | 'client' | null; clientData: Client | null; coachData: Coach | null; onUpdateClient: (id: string, updates: Partial<Client>) => void; onUpdateCoach: (id: string, updates: Partial<Coach>) => void; onLogout: () => void; onNavigate?: (s: Screen) => void; darkMode: boolean; onToggleDarkMode: () => void; coaches: Coach[] }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [assignedCoachId, setAssignedCoachId] = useState(clientData?.assignedCoachId || '');
@@ -5143,6 +5145,23 @@ const ProfileScreen = ({ userRole, clientData, coachData, onUpdateClient, onLogo
     name: isViewingClient ? clientData?.name || '' : (isCoachSelf ? coachData?.name || '' : 'Sarah Jenkins'),
     img: isViewingClient ? clientData?.img || '' : (isCoachSelf ? coachData?.img || '' : 'https://picsum.photos/seed/sarah/200/200')
   });
+
+  // Update editedData when props change
+  useEffect(() => {
+    setEditedData({
+      name: isViewingClient ? clientData?.name || '' : (isCoachSelf ? coachData?.name || '' : 'Sarah Jenkins'),
+      img: isViewingClient ? clientData?.img || '' : (isCoachSelf ? coachData?.img || '' : 'https://picsum.photos/seed/sarah/200/200')
+    });
+  }, [clientData, coachData, isViewingClient, isCoachSelf]);
+
+  const handleSave = () => {
+    if (isViewingClient && clientData) {
+      onUpdateClient(clientData.id, { name: editedData.name, img: editedData.img });
+    } else if (isCoachSelf && coachData) {
+      onUpdateCoach(coachData.id, { name: editedData.name, img: editedData.img });
+    }
+    setIsEditing(false);
+  };
 
   const handleImageUpload = () => {
     const input = document.createElement('input');
@@ -5186,7 +5205,13 @@ const ProfileScreen = ({ userRole, clientData, coachData, onUpdateClient, onLogo
           {isViewingClient ? `Perfil: ${clientData?.name}` : (isCoachSelf ? 'Mi Perfil (Coach)' : 'Mi Perfil')}
         </h2>
         <button 
-          onClick={() => setIsEditing(!isEditing)}
+          onClick={() => {
+            if (isEditing) {
+              handleSave();
+            } else {
+              setIsEditing(true);
+            }
+          }}
           className="p-2 rounded-full hover:bg-primary/10 transition-colors text-primary font-bold text-sm"
         >
           {isEditing ? 'Guardar' : 'Editar'}
@@ -5542,7 +5567,14 @@ export default function App() {
     const saved = localStorage.getItem('loggedInCoach');
     return saved ? JSON.parse(saved) : null;
   });
-  const [clientsList, setClientsList] = useState<Client[]>(clients);
+  const [coachesList, setCoachesList] = useState<Coach[]>(() => {
+    const saved = localStorage.getItem('coachesList');
+    return saved ? JSON.parse(saved) : DEFAULT_COACHES;
+  });
+  const [clientsList, setClientsList] = useState<Client[]>(() => {
+    const saved = localStorage.getItem('clientsList');
+    return saved ? JSON.parse(saved) : DEFAULT_CLIENTS;
+  });
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [toast, setToast] = useState<{ show: boolean; message: string; type: 'success' | 'error' }>({
     show: false,
@@ -5550,7 +5582,7 @@ export default function App() {
     type: 'success'
   });
 
-  // Persist auth state
+  // Persist auth state and lists
   useEffect(() => {
     if (userRole) localStorage.setItem('userRole', userRole);
     else localStorage.removeItem('userRole');
@@ -5560,7 +5592,10 @@ export default function App() {
     
     if (loggedInCoach) localStorage.setItem('loggedInCoach', JSON.stringify(loggedInCoach));
     else localStorage.removeItem('loggedInCoach');
-  }, [userRole, currentUser, loggedInCoach]);
+
+    localStorage.setItem('coachesList', JSON.stringify(coachesList));
+    localStorage.setItem('clientsList', JSON.stringify(clientsList));
+  }, [userRole, currentUser, loggedInCoach, coachesList, clientsList]);
 
   // Test connection to Firestore
   useEffect(() => {
@@ -5651,6 +5686,16 @@ export default function App() {
           enabledSections: defaultSections
         };
         setClientsList(prev => [...prev, newClient]);
+      } else if (role === 'coach') {
+        const newCoach: Coach = {
+          id: mockUid,
+          name: name,
+          role: 'coach',
+          img: `https://picsum.photos/seed/${mockUid}/100/100`,
+          phone: '+34 600 000 000',
+          email: email
+        };
+        setCoachesList(prev => [...prev, newCoach]);
       }
 
       setToast({ show: true, message: `Cuenta de ${role} creada correctamente (Local)`, type: 'success' });
@@ -5670,6 +5715,29 @@ export default function App() {
     if (selectedClient && selectedClient.id === clientId) {
       setSelectedClient(prev => prev ? { ...prev, ...updates } : null);
     }
+
+    // If this is a self-client update, we might also need to update the coach data
+    if (clientId.startsWith('self_')) {
+      const coachId = clientId.replace('self_', '');
+      handleUpdateCoach(coachId, { name: updates.name?.replace(' (Yo)', ''), img: updates.img });
+    }
+  };
+
+  const handleUpdateCoach = (coachId: string, updates: Partial<Coach>) => {
+    setCoachesList(prev => prev.map(c => c.id === coachId ? { ...c, ...updates } : c));
+    
+    // If we are updating the currently logged in coach, update that state too
+    if (loggedInCoach && loggedInCoach.id === coachId) {
+      setLoggedInCoach(prev => prev ? { ...prev, ...updates } : null);
+    }
+
+    // Also update the corresponding self-client if it exists
+    const selfClientId = `self_${coachId}`;
+    setClientsList(prev => prev.map(c => c.id === selfClientId ? { 
+      ...c, 
+      name: updates.name ? `${updates.name} (Yo)` : c.name,
+      img: updates.img || c.img 
+    } : c));
   };
 
   const handleReportDiscomfort = (exerciseName: string, description?: string, painLevel?: number) => {
@@ -5782,9 +5850,10 @@ export default function App() {
               <LoginScreen 
                 setToast={setToast}
                 onLogin={handleLogin}
+                coaches={coachesList}
               />
             )}
-            {screen === 'home' && <HomeScreen isCoach={isCoachViewing} clientData={currentClient} />}
+            {screen === 'home' && <HomeScreen isCoach={isCoachViewing} clientData={currentClient} coaches={coachesList} />}
             {screen === 'dashboard' && (
               <DashboardScreen 
                 coach={loggedInCoach}
@@ -5813,10 +5882,12 @@ export default function App() {
                 clientData={currentClient}
                 coachData={loggedInCoach}
                 onUpdateClient={handleUpdateClient}
+                onUpdateCoach={handleUpdateCoach}
                 onNavigate={setScreen}
                 darkMode={darkMode}
                 onToggleDarkMode={() => setDarkMode(!darkMode)}
                 onLogout={handleLogout}
+                coaches={coachesList}
               />
             )}
           </motion.div>

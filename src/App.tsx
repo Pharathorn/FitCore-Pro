@@ -93,8 +93,18 @@ import {
   getDocFromServer
 } from 'firebase/firestore';
 import { initializeApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
-import { db, auth, firebaseConfig } from './firebase';
+import { 
+  getAuth, 
+  signInWithEmailAndPassword, 
+  createUserWithEmailAndPassword, 
+  signOut 
+} from 'firebase/auth';
+import { 
+  ref, 
+  uploadBytes, 
+  getDownloadURL 
+} from 'firebase/storage';
+import { db, auth, storage, firebaseConfig } from './firebase';
 
 // --- Types ---
 enum OperationType {
@@ -351,6 +361,7 @@ interface Coach {
   name: string;
   phone: string;
   img: string;
+  email?: string;
   role: 'admin' | 'coach';
 }
 
@@ -375,12 +386,24 @@ interface Client {
   img: string;
   weight?: string;
   bodyFat?: string;
+  targetWeight?: string;
+  dietType?: string;
+  allergies?: string;
   stepsTarget?: number;
   waterTarget?: number;
   achievements?: Achievement[];
   progressPhotos?: ProgressPhoto[];
   assignedCoachId?: string;
   enabledSections: EnabledSections;
+  diets?: DietFile[];
+  workouts?: DietFile[];
+}
+
+interface DietFile {
+  id: string;
+  name: string;
+  url: string;
+  uploadedAt: any;
 }
 
 interface DailyLog {
@@ -829,7 +852,7 @@ const DashboardScreen = ({
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
-  const [coachFilter, setCoachFilter] = useState<'all' | 'mine'>('mine');
+  const [coachFilter, setCoachFilter] = useState<string>('all');
   const [showNotifications, setShowNotifications] = useState(false);
   const [editingSections, setEditingSections] = useState<string | null>(null);
 
@@ -856,9 +879,12 @@ const DashboardScreen = ({
       statusFilter === 'active' ? c.active :
       !c.active;
 
-    const matchesCoach = 
-      isAdmin || coachFilter === 'all' ? true :
-      c.assignedCoachId === coach?.id || c.id.startsWith('self_');
+    let matchesCoach = true;
+    if (isAdmin) {
+      matchesCoach = coachFilter === 'all' || c.assignedCoachId === coachFilter;
+    } else if (userRole === 'coach') {
+      matchesCoach = c.assignedCoachId === coach?.id || c.id.startsWith('self_');
+    }
 
     return matchesSearch && matchesStatus && matchesCoach;
   });
@@ -1050,15 +1076,28 @@ const DashboardScreen = ({
 
             {/* Filters */}
             <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
-              {!isAdmin && (
+              {isAdmin ? (
+                <select 
+                  value={coachFilter}
+                  onChange={(e) => setCoachFilter(e.target.value)}
+                  className="px-4 py-2 rounded-full text-[10px] font-bold uppercase tracking-widest bg-bg-surface/50 text-text-muted border border-black/10 dark:border-white/10 outline-none focus:ring-2 focus:ring-primary transition-all"
+                >
+                  <option value="all">Todos los Coaches</option>
+                  {/* We need to pass coaches list to DashboardScreen if we want to show names here */}
+                  {/* For now, let's just show IDs or assume we have the list */}
+                  {Array.from(new Set(clients.map(c => c.assignedCoachId))).filter(Boolean).map(id => (
+                    <option key={id} value={id}>Coach {id.slice(0, 4)}</option>
+                  ))}
+                </select>
+              ) : (
                 <button 
-                  onClick={() => setCoachFilter(coachFilter === 'all' ? 'mine' : 'all')}
+                  onClick={() => setCoachFilter(coachFilter === 'all' ? (coach?.id || 'all') : 'all')}
                   className={cn(
                     "px-4 py-2 rounded-full text-[10px] font-bold uppercase tracking-widest transition-all whitespace-nowrap flex items-center gap-2",
-                    coachFilter === 'mine' ? "bg-primary text-bg-dark" : "bg-bg-surface/50 text-text-muted border border-black/10 dark:border-white/10"
+                    coachFilter !== 'all' ? "bg-primary text-bg-dark" : "bg-bg-surface/50 text-text-muted border border-black/10 dark:border-white/10"
                   )}
                 >
-                  <User className="size-3" /> {coachFilter === 'mine' ? 'Mis Clientes' : 'Todos'}
+                  <User className="size-3" /> {coachFilter !== 'all' ? 'Mis Clientes' : 'Todos'}
                 </button>
               )}
               <button 
@@ -1260,14 +1299,27 @@ const WelcomeScreen = ({ onLogin }: { onLogin: () => void }) => {
   );
 };
 
-const RegisterScreen = ({ onRegister, onBack }: { onRegister: (email: string, pass: string, name: string, role: 'client' | 'coach') => void; onBack: () => void }) => {
+const RegisterScreen = ({ 
+  onRegister, 
+  onBack, 
+  coaches, 
+  userRole 
+}: { 
+  onRegister: (email: string, pass: string, name: string, role: 'client' | 'coach', assignedCoachId?: string) => void; 
+  onBack: () => void;
+  coaches: Coach[];
+  userRole: 'admin' | 'coach' | 'client' | null;
+}) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [name, setName] = useState('');
   const [role, setRole] = useState<'client' | 'coach'>('client');
+  const [assignedCoachId, setAssignedCoachId] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  const isAdmin = userRole === 'admin';
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -1283,9 +1335,14 @@ const RegisterScreen = ({ onRegister, onBack }: { onRegister: (email: string, pa
       return;
     }
 
+    if (role === 'client' && isAdmin && !assignedCoachId) {
+      setError('Por favor, asigna un coach al cliente');
+      return;
+    }
+
     setLoading(true);
     try {
-      await onRegister(email, password, name, role);
+      await onRegister(email, password, name, role, assignedCoachId);
     } catch (err: any) {
       setError(err.message || 'Error al crear la cuenta');
     } finally {
@@ -1355,18 +1412,37 @@ const RegisterScreen = ({ onRegister, onBack }: { onRegister: (email: string, pa
             >
               Cliente
             </button>
-            <button 
-              type="button"
-              onClick={() => setRole('coach')}
-              className={cn(
-                "flex-1 py-3 rounded-xl font-bold text-sm transition-all border",
-                role === 'coach' ? "bg-secondary text-bg-dark border-secondary" : "bg-bg-surface/50 border-black/10 dark:border-white/10 text-text-muted"
-              )}
-            >
-              Coach
-            </button>
+            {isAdmin && (
+              <button 
+                type="button"
+                onClick={() => setRole('coach')}
+                className={cn(
+                  "flex-1 py-3 rounded-xl font-bold text-sm transition-all border",
+                  role === 'coach' ? "bg-secondary text-bg-dark border-secondary" : "bg-bg-surface/50 border-black/10 dark:border-white/10 text-text-muted"
+                )}
+              >
+                Coach
+              </button>
+            )}
           </div>
         </div>
+
+        {role === 'client' && isAdmin && (
+          <div className="space-y-2">
+            <label className="text-sm font-semibold text-text-muted ml-1">Asignar Coach</label>
+            <select 
+              required
+              value={assignedCoachId}
+              onChange={(e) => setAssignedCoachId(e.target.value)}
+              className="w-full h-14 bg-bg-surface/50 border border-black/10 dark:border-white/10 rounded-xl px-4 text-text-bright focus:ring-2 focus:ring-primary focus:border-transparent transition-all outline-none appearance-none"
+            >
+              <option value="" disabled>Seleccionar Coach</option>
+              {coaches.map(c => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+          </div>
+        )}
 
         <div className="space-y-2">
           <label className="text-sm font-semibold text-text-muted ml-1">Contraseña</label>
@@ -1645,10 +1721,9 @@ const OnboardingScreen = ({ onComplete }: { onComplete: () => void }) => {
   );
 };
 
-const LoginScreen = ({ setToast, onLogin, coaches }: { 
+const LoginScreen = ({ setToast, onLogin }: { 
   setToast: (toast: { show: boolean; message: string; type: 'success' | 'error' }) => void;
-  onLogin: (email: string, role: 'admin' | 'coach' | 'client', data: any) => void;
-  coaches: Coach[];
+  onLogin: (email: string, pass: string) => Promise<void>;
 }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -1671,20 +1746,13 @@ const LoginScreen = ({ setToast, onLogin, coaches }: {
     setError('');
     setLoading(true);
 
-    // Mock login logic using the provided coaches list
-    setTimeout(() => {
-      if (email === 'admin@admin.com' && password === '123') {
-        onLogin(email, 'admin', coaches.find(c => c.role === 'admin') || coaches[0]);
-      } else if (email === 'coach@coach.com' && password === '123') {
-        onLogin(email, 'coach', coaches.find(c => c.role === 'coach') || coaches[1]);
-      } else if (email === 'client@client.com' && password === '123') {
-        // Clients are still mocked for now, but we could also use a clientsList here
-        onLogin(email, 'client', DEFAULT_CLIENTS[0]);
-      } else {
-        setError('Credenciales incorrectas. Prueba con admin@admin.com / 123');
-      }
+    try {
+      await onLogin(email, password);
+    } catch (err: any) {
+      setError('Credenciales incorrectas o error de conexión.');
+    } finally {
       setLoading(false);
-    }, 800);
+    }
   };
 
   return (
@@ -5130,7 +5198,31 @@ const ProgressScreen = ({ isCoach, clientData }: { isCoach?: boolean; clientData
   );
 };
 
-const ProfileScreen = ({ userRole, clientData, coachData, onUpdateClient, onUpdateCoach, onLogout, onNavigate, darkMode, onToggleDarkMode, coaches }: { userRole: 'admin' | 'coach' | 'client' | null; clientData: Client | null; coachData: Coach | null; onUpdateClient: (id: string, updates: Partial<Client>) => void; onUpdateCoach: (id: string, updates: Partial<Coach>) => void; onLogout: () => void; onNavigate?: (s: Screen) => void; darkMode: boolean; onToggleDarkMode: () => void; coaches: Coach[] }) => {
+const ProfileScreen = ({ 
+  userRole, 
+  clientData, 
+  coachData, 
+  onUpdateClient, 
+  onUpdateCoach, 
+  onLogout, 
+  onNavigate, 
+  darkMode, 
+  onToggleDarkMode, 
+  coaches,
+  setToast
+}: { 
+  userRole: 'admin' | 'coach' | 'client' | null; 
+  clientData: Client | null; 
+  coachData: Coach | null; 
+  onUpdateClient: (id: string, updates: Partial<Client>) => void; 
+  onUpdateCoach: (id: string, updates: Partial<Coach>) => void; 
+  onLogout: () => void; 
+  onNavigate?: (s: Screen) => void; 
+  darkMode: boolean; 
+  onToggleDarkMode: () => void; 
+  coaches: Coach[];
+  setToast: (toast: { show: boolean; message: string; type: 'success' | 'error' }) => void;
+}) => {
   const [isEditing, setIsEditing] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [assignedCoachId, setAssignedCoachId] = useState(clientData?.assignedCoachId || '');
@@ -5143,20 +5235,33 @@ const ProfileScreen = ({ userRole, clientData, coachData, onUpdateClient, onUpda
 
   const [editedData, setEditedData] = useState({
     name: isViewingClient ? clientData?.name || '' : (isCoachSelf ? coachData?.name || '' : 'Sarah Jenkins'),
-    img: isViewingClient ? clientData?.img || '' : (isCoachSelf ? coachData?.img || '' : 'https://picsum.photos/seed/sarah/200/200')
+    img: isViewingClient ? clientData?.img || '' : (isCoachSelf ? coachData?.img || '' : 'https://picsum.photos/seed/sarah/200/200'),
+    targetWeight: clientData?.targetWeight || '',
+    dietType: clientData?.dietType || '',
+    allergies: clientData?.allergies || ''
   });
 
   // Update editedData when props change
   useEffect(() => {
     setEditedData({
       name: isViewingClient ? clientData?.name || '' : (isCoachSelf ? coachData?.name || '' : 'Sarah Jenkins'),
-      img: isViewingClient ? clientData?.img || '' : (isCoachSelf ? coachData?.img || '' : 'https://picsum.photos/seed/sarah/200/200')
+      img: isViewingClient ? clientData?.img || '' : (isCoachSelf ? coachData?.img || '' : 'https://picsum.photos/seed/sarah/200/200'),
+      targetWeight: clientData?.targetWeight || '',
+      dietType: clientData?.dietType || '',
+      allergies: clientData?.allergies || ''
     });
   }, [clientData, coachData, isViewingClient, isCoachSelf]);
 
   const handleSave = () => {
     if (isViewingClient && clientData) {
-      onUpdateClient(clientData.id, { name: editedData.name, img: editedData.img });
+      onUpdateClient(clientData.id, { 
+        name: editedData.name, 
+        img: editedData.img,
+        targetWeight: editedData.targetWeight,
+        dietType: editedData.dietType,
+        allergies: editedData.allergies,
+        assignedCoachId: assignedCoachId
+      });
     } else if (isCoachSelf && coachData) {
       onUpdateCoach(coachData.id, { name: editedData.name, img: editedData.img });
     }
@@ -5175,6 +5280,37 @@ const ProfileScreen = ({ userRole, clientData, coachData, onUpdateClient, onUpda
           setEditedData(prev => ({ ...prev, img: event.target?.result as string }));
         };
         reader.readAsDataURL(file);
+      }
+    };
+    input.click();
+  };
+
+  const handleFileUpload = async (type: 'diets' | 'workouts') => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.pdf';
+    input.onchange = async (e: any) => {
+      const file = e.target.files[0];
+      if (file && clientData) {
+        try {
+          const fileRef = ref(storage, `${type}/${clientData.id}/${Date.now()}_${file.name}`);
+          const snapshot = await uploadBytes(fileRef, file);
+          const url = await getDownloadURL(snapshot.ref);
+          
+          const newFile: DietFile = {
+            id: Date.now().toString(),
+            name: file.name,
+            url: url,
+            uploadedAt: serverTimestamp()
+          };
+          
+          const currentFiles = clientData[type] || [];
+          onUpdateClient(clientData.id, { [type]: [...currentFiles, newFile] });
+          setToast({ show: true, message: 'Archivo subido correctamente', type: 'success' });
+        } catch (error) {
+          console.error("Error uploading file:", error);
+          setToast({ show: true, message: 'Error al subir el archivo', type: 'error' });
+        }
       }
     };
     input.click();
@@ -5263,8 +5399,133 @@ const ProfileScreen = ({ userRole, clientData, coachData, onUpdateClient, onUpda
               <p className="text-xl font-bold">{latestWeight}</p>
             </div>
             <div className="glass-card rounded-xl p-4">
-              <p className="text-text-muted text-[10px] font-bold uppercase tracking-wider">Grasa Corporal</p>
-              <p className="text-xl font-bold">{isViewingClient ? clientData?.bodyFat : (clientData?.bodyFat || '21.4%')}</p>
+              <p className="text-text-muted text-[10px] font-bold uppercase tracking-wider">Objetivo</p>
+              {isEditing ? (
+                <input 
+                  type="text"
+                  value={editedData.targetWeight}
+                  onChange={(e) => setEditedData(prev => ({ ...prev, targetWeight: e.target.value }))}
+                  className="bg-transparent border-b border-primary/20 text-xl font-bold w-full outline-none"
+                  placeholder="70 kg"
+                />
+              ) : (
+                <p className="text-xl font-bold">{editedData.targetWeight || '---'}</p>
+              )}
+            </div>
+          </div>
+        )}
+
+        {clientData && isEditing && (
+          <div className="space-y-4 mb-8">
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold text-text-muted uppercase tracking-widest ml-1">Tipo de Dieta</label>
+              <input 
+                type="text"
+                value={editedData.dietType}
+                onChange={(e) => setEditedData(prev => ({ ...prev, dietType: e.target.value }))}
+                className="w-full h-12 bg-bg-surface/50 border border-black/10 dark:border-white/10 rounded-xl px-4 text-text-bright focus:ring-2 focus:ring-primary outline-none"
+                placeholder="Ej: Cetogénica, Vegana..."
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold text-text-muted uppercase tracking-widest ml-1">Alergias / Intolerancias</label>
+              <textarea 
+                value={editedData.allergies}
+                onChange={(e) => setEditedData(prev => ({ ...prev, allergies: e.target.value }))}
+                className="w-full h-24 bg-bg-surface/50 border border-black/10 dark:border-white/10 rounded-xl p-4 text-text-bright focus:ring-2 focus:ring-primary outline-none resize-none"
+                placeholder="Ej: Lactosa, Frutos secos..."
+              />
+            </div>
+            {isAdmin && (
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-text-muted uppercase tracking-widest ml-1">Asignar Coach</label>
+                <select 
+                  value={assignedCoachId}
+                  onChange={(e) => setAssignedCoachId(e.target.value)}
+                  className="w-full h-12 bg-bg-surface/50 border border-black/10 dark:border-white/10 rounded-xl px-4 text-text-bright focus:ring-2 focus:ring-primary outline-none appearance-none"
+                >
+                  <option value="" disabled>Seleccionar Coach</option>
+                  {coaches.map(c => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
+        )}
+
+        {isViewingClient && (
+          <div className="space-y-6 mb-8">
+            <div className="space-y-4">
+              <div className="flex items-center justify-between px-1">
+                <h3 className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Dietas (PDF)</h3>
+                <button 
+                  onClick={() => handleFileUpload('diets')}
+                  className="p-2 bg-primary/10 text-primary rounded-lg hover:bg-primary/20 transition-colors"
+                >
+                  <Plus className="size-4" />
+                </button>
+              </div>
+              <div className="space-y-2">
+                {clientData?.diets?.map(diet => (
+                  <div key={diet.id} className="flex items-center justify-between p-3 glass-card rounded-xl">
+                    <div className="flex items-center gap-3">
+                      <FileText className="size-5 text-primary" />
+                      <div>
+                        <p className="text-sm font-bold">{diet.name}</p>
+                        <p className="text-[10px] text-text-muted">Subido hace poco</p>
+                      </div>
+                    </div>
+                    <a 
+                      href={diet.url} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="p-2 bg-bg-surface/50 rounded-lg text-text-muted hover:text-primary transition-colors"
+                    >
+                      <Download className="size-4" />
+                    </a>
+                  </div>
+                ))}
+                {(!clientData?.diets || clientData.diets.length === 0) && (
+                  <p className="text-xs text-text-muted italic text-center py-4">No hay dietas subidas</p>
+                )}
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div className="flex items-center justify-between px-1">
+                <h3 className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Entrenamientos (PDF)</h3>
+                <button 
+                  onClick={() => handleFileUpload('workouts')}
+                  className="p-2 bg-primary/10 text-primary rounded-lg hover:bg-primary/20 transition-colors"
+                >
+                  <Plus className="size-4" />
+                </button>
+              </div>
+              <div className="space-y-2">
+                {clientData?.workouts?.map(workout => (
+                  <div key={workout.id} className="flex items-center justify-between p-3 glass-card rounded-xl">
+                    <div className="flex items-center gap-3">
+                      <FileText className="size-5 text-primary" />
+                      <div>
+                        <p className="text-sm font-bold">{workout.name}</p>
+                        <p className="text-[10px] text-text-muted">Subido hace poco</p>
+                      </div>
+                    </div>
+                    <a 
+                      href={workout.url} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="p-2 bg-bg-surface/50 rounded-lg text-text-muted hover:text-primary transition-colors"
+                    >
+                      <Download className="size-4" />
+                    </a>
+                  </div>
+                ))}
+                {(!clientData?.workouts || clientData.workouts.length === 0) && (
+                  <p className="text-xs text-text-muted italic text-center py-4">No hay entrenamientos subidos</p>
+                )}
+              </div>
             </div>
           </div>
         )}
@@ -5553,28 +5814,13 @@ export default function App() {
   }, [darkMode]);
 
   const [screen, setScreen] = useState<Screen>('welcome');
-  const [userRole, setUserRole] = useState<'admin' | 'coach' | 'client' | null>(() => {
-    const saved = localStorage.getItem('userRole');
-    return (saved as any) || null;
-  });
-  const [currentUser, setCurrentUser] = useState<any>(() => {
-    const saved = localStorage.getItem('currentUser');
-    return saved ? JSON.parse(saved) : null;
-  });
-  const [isAuthReady, setIsAuthReady] = useState(true);
+  const [userRole, setUserRole] = useState<'admin' | 'coach' | 'client' | null>(null);
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [isAuthReady, setIsAuthReady] = useState(false);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
-  const [loggedInCoach, setLoggedInCoach] = useState<Coach | null>(() => {
-    const saved = localStorage.getItem('loggedInCoach');
-    return saved ? JSON.parse(saved) : null;
-  });
-  const [coachesList, setCoachesList] = useState<Coach[]>(() => {
-    const saved = localStorage.getItem('coachesList');
-    return saved ? JSON.parse(saved) : DEFAULT_COACHES;
-  });
-  const [clientsList, setClientsList] = useState<Client[]>(() => {
-    const saved = localStorage.getItem('clientsList');
-    return saved ? JSON.parse(saved) : DEFAULT_CLIENTS;
-  });
+  const [loggedInCoach, setLoggedInCoach] = useState<Coach | null>(null);
+  const [coachesList, setCoachesList] = useState<Coach[]>([]);
+  const [clientsList, setClientsList] = useState<Client[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [toast, setToast] = useState<{ show: boolean; message: string; type: 'success' | 'error' }>({
     show: false,
@@ -5582,20 +5828,90 @@ export default function App() {
     type: 'success'
   });
 
-  // Persist auth state and lists
+  // Firebase Auth Listener
   useEffect(() => {
-    if (userRole) localStorage.setItem('userRole', userRole);
-    else localStorage.removeItem('userRole');
-    
-    if (currentUser) localStorage.setItem('currentUser', JSON.stringify(currentUser));
-    else localStorage.removeItem('currentUser');
-    
-    if (loggedInCoach) localStorage.setItem('loggedInCoach', JSON.stringify(loggedInCoach));
-    else localStorage.removeItem('loggedInCoach');
+    const unsubscribe = auth.onAuthStateChanged(async (user) => {
+      if (user) {
+        setCurrentUser(user);
+        try {
+          const userDoc = await getDoc(doc(db, 'users', user.uid));
+          if (userDoc.exists()) {
+            const userData = userDoc.data();
+            setUserRole(userData.role);
+            
+            if (userData.role === 'coach' || userData.role === 'admin') {
+              const coachDoc = await getDoc(doc(db, 'coaches', user.uid));
+              if (coachDoc.exists()) {
+                setLoggedInCoach({ id: coachDoc.id, ...coachDoc.data() } as Coach);
+              }
+            }
+          }
+        } catch (error) {
+          console.error("Error fetching user data:", error);
+        }
+      } else {
+        setCurrentUser(null);
+        setUserRole(null);
+        setLoggedInCoach(null);
+      }
+      setIsAuthReady(true);
+    });
+    return () => unsubscribe();
+  }, []);
 
-    localStorage.setItem('coachesList', JSON.stringify(coachesList));
-    localStorage.setItem('clientsList', JSON.stringify(clientsList));
-  }, [userRole, currentUser, loggedInCoach, coachesList, clientsList]);
+  // Firestore Listeners for Coaches and Clients
+  useEffect(() => {
+    if (!isAuthReady) return;
+
+    const coachesUnsubscribe = onSnapshot(collection(db, 'coaches'), (snapshot) => {
+      const coaches = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Coach));
+      setCoachesList(coaches);
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'coaches'));
+
+    let clientsQuery;
+    if (userRole === 'admin') {
+      clientsQuery = collection(db, 'clients');
+    } else if (userRole === 'coach' && currentUser) {
+      clientsQuery = query(collection(db, 'clients'), where('assignedCoachId', '==', currentUser.uid));
+    } else if (userRole === 'client' && currentUser) {
+      clientsQuery = query(collection(db, 'clients'), where('id', '==', currentUser.uid));
+    } else {
+      setClientsList([]);
+      return;
+    }
+
+    const clientsUnsubscribe = onSnapshot(clientsQuery, (snapshot) => {
+      const clients = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Client));
+      setClientsList(clients);
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'clients'));
+
+    let notificationsQuery;
+    if (userRole === 'admin') {
+      notificationsQuery = collection(db, 'notifications');
+    } else if (userRole === 'coach' && currentUser) {
+      notificationsQuery = query(collection(db, 'notifications'), where('assignedCoachId', '==', currentUser.uid));
+    } else if (userRole === 'client' && currentUser) {
+      notificationsQuery = query(collection(db, 'notifications'), where('clientId', '==', currentUser.uid));
+    }
+
+    let notificationsUnsubscribe = () => {};
+    if (notificationsQuery) {
+      notificationsUnsubscribe = onSnapshot(notificationsQuery, (snapshot) => {
+        const notifs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
+        setNotifications(notifs);
+      }, (error) => handleFirestoreError(error, OperationType.LIST, 'notifications'));
+    }
+
+    return () => {
+      coachesUnsubscribe();
+      clientsUnsubscribe();
+      notificationsUnsubscribe();
+    };
+  }, [isAuthReady, userRole, currentUser]);
+
+  useEffect(() => {
+    localStorage.setItem('darkMode', JSON.stringify(darkMode));
+  }, [darkMode]);
 
   // Test connection to Firestore
   useEffect(() => {
@@ -5611,57 +5927,52 @@ export default function App() {
     testConnection();
   }, []);
 
-  const handleLogin = (email: string, role: 'admin' | 'coach' | 'client', data: any) => {
-    setCurrentUser({ email, uid: data.id || email });
-    setUserRole(role);
-    if (role === 'admin' || role === 'coach') {
-      setLoggedInCoach(data);
+  const handleLogin = async (email: string, pass: string) => {
+    try {
+      const userCredential = await signInWithEmailAndPassword(auth, email, pass);
+      const user = userCredential.user;
       
-      // Ensure coach has a self-client entry for tracking
-      const coach = data as Coach;
-      const selfClientId = `self_${coach.id}`;
-      setClientsList(prev => {
-        if (!prev.find(c => c.id === selfClientId)) {
-          const selfClient: Client = {
-            id: selfClientId,
-            name: `${coach.name} (Yo)`,
-            program: 'Mi Propio Plan',
-            status: 'Hoy',
-            active: true,
-            img: coach.img || '',
-            enabledSections: defaultSections,
-            assignedCoachId: coach.id || ''
-          };
-          return [selfClient, ...prev];
+      const userDoc = await getDoc(doc(db, 'users', user.uid));
+      if (userDoc.exists()) {
+        const userData = userDoc.data();
+        if (userData.role === 'client') {
+          const clientDoc = await getDoc(doc(db, 'clients', user.uid));
+          if (clientDoc.exists()) {
+            setSelectedClient({ id: clientDoc.id, ...clientDoc.data() } as Client);
+            setScreen('home');
+          }
+        } else {
+          setScreen('dashboard');
         }
-        return prev;
-      });
-      
-      setScreen('dashboard');
-    } else {
-      setSelectedClient(data);
-      setScreen('home');
+      }
+      setToast({ show: true, message: 'Bienvenido de nuevo', type: 'success' });
+    } catch (error: any) {
+      console.error("Login Error:", error);
+      setToast({ show: true, message: 'Error al iniciar sesión. Comprueba tus credenciales.', type: 'error' });
     }
   };
 
-  const handleLogout = () => {
-    setCurrentUser(null);
-    setUserRole(null);
-    setLoggedInCoach(null);
-    setSelectedClient(null);
-    setScreen('welcome');
-    localStorage.removeItem('userRole');
-    localStorage.removeItem('currentUser');
-    localStorage.removeItem('loggedInCoach');
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+      setCurrentUser(null);
+      setUserRole(null);
+      setLoggedInCoach(null);
+      setSelectedClient(null);
+      setScreen('welcome');
+    } catch (error) {
+      console.error("Logout Error:", error);
+    }
   };
 
-  const handleRegister = async (email: string, pass: string, name: string, role: 'client' | 'coach') => {
+  const handleRegister = async (email: string, pass: string, name: string, role: 'client' | 'coach', assignedCoachId?: string) => {
     try {
-      // Local registration (mocking Firebase Auth)
-      const mockUid = `user_${Date.now()}`;
+      // 1. Create user in Firebase Auth
+      const userCredential = await createUserWithEmailAndPassword(auth, email, pass);
+      const user = userCredential.user;
       
-      // 1. Create user document in Firestore (for data persistence)
-      await setDoc(doc(db, 'users', mockUid), {
+      // 2. Create user document in Firestore
+      await setDoc(doc(db, 'users', user.uid), {
         email: email,
         name: name,
         role: role,
@@ -5669,92 +5980,136 @@ export default function App() {
         active: true
       });
 
-      // 2. If it's a client, add to clientsList state
+      // 3. Create specific profile document
       if (role === 'client') {
         const newClient: Client = {
-          id: mockUid,
+          id: user.uid,
           name: name,
           program: 'Nuevo Plan',
           status: 'Recién unido',
           active: true,
-          img: `https://picsum.photos/seed/${mockUid}/100/100`,
+          img: `https://picsum.photos/seed/${user.uid}/100/100`,
           weight: '0 kg',
           bodyFat: '0%',
           stepsTarget: 10000,
           waterTarget: 2.5,
-          assignedCoachId: loggedInCoach?.id || '',
+          assignedCoachId: assignedCoachId || loggedInCoach?.id || '',
           enabledSections: defaultSections
         };
-        setClientsList(prev => [...prev, newClient]);
+        await setDoc(doc(db, 'clients', user.uid), newClient);
       } else if (role === 'coach') {
         const newCoach: Coach = {
-          id: mockUid,
+          id: user.uid,
           name: name,
           role: 'coach',
-          img: `https://picsum.photos/seed/${mockUid}/100/100`,
+          img: `https://picsum.photos/seed/${user.uid}/100/100`,
           phone: '+34 600 000 000',
           email: email
         };
-        setCoachesList(prev => [...prev, newCoach]);
+        await setDoc(doc(db, 'coaches', user.uid), newCoach);
+        
+        // Create self-client for coach
+        const selfClientId = `self_${user.uid}`;
+        const selfClient: Client = {
+          id: selfClientId,
+          name: `${name} (Yo)`,
+          program: 'Mi Propio Plan',
+          status: 'Hoy',
+          active: true,
+          img: newCoach.img,
+          enabledSections: defaultSections,
+          assignedCoachId: user.uid
+        };
+        await setDoc(doc(db, 'clients', selfClientId), selfClient);
       }
 
-      setToast({ show: true, message: `Cuenta de ${role} creada correctamente (Local)`, type: 'success' });
-      setScreen('dashboard');
+      setToast({ show: true, message: `Cuenta de ${role} creada correctamente`, type: 'success' });
+      // Don't change screen, let the auth listener handle it or stay in dashboard if admin/coach created it
     } catch (error: any) {
       console.error("Registration Error:", error);
-      setToast({ show: true, message: "Error al crear la cuenta local", type: 'error' });
+      setToast({ show: true, message: "Error al crear la cuenta", type: 'error' });
     }
   };
 
   const showNav = !['onboarding', 'login', 'welcome', 'register'].includes(screen);
 
-  const handleUpdateClient = (clientId: string, updates: Partial<Client>) => {
-    setClientsList(prev => prev.map(c => c.id === clientId ? { ...c, ...updates } : c));
-    
-    // If we are updating the currently selected client, update that state too
-    if (selectedClient && selectedClient.id === clientId) {
-      setSelectedClient(prev => prev ? { ...prev, ...updates } : null);
-    }
+  const handleUpdateClient = async (clientId: string, updates: Partial<Client>) => {
+    try {
+      await setDoc(doc(db, 'clients', clientId), updates, { merge: true });
+      
+      // If we are updating the currently selected client, update that state too
+      if (selectedClient && selectedClient.id === clientId) {
+        setSelectedClient(prev => prev ? { ...prev, ...updates } : null);
+      }
 
-    // If this is a self-client update, we might also need to update the coach data
-    if (clientId.startsWith('self_')) {
-      const coachId = clientId.replace('self_', '');
-      handleUpdateCoach(coachId, { name: updates.name?.replace(' (Yo)', ''), img: updates.img });
+      // If this is a self-client update, we might also need to update the coach data
+      if (clientId.startsWith('self_') && loggedInCoach) {
+        const coachId = clientId.replace('self_', '');
+        const coachUpdates: Partial<Coach> = {};
+        if (updates.name) coachUpdates.name = updates.name.replace(' (Yo)', '');
+        if (updates.img) coachUpdates.img = updates.img;
+        
+        if (Object.keys(coachUpdates).length > 0) {
+          await handleUpdateCoach(coachId, coachUpdates);
+        }
+      }
+    } catch (error) {
+      console.error("Error updating client:", error);
+      setToast({ show: true, message: "Error al actualizar los datos", type: 'error' });
     }
   };
 
-  const handleUpdateCoach = (coachId: string, updates: Partial<Coach>) => {
-    setCoachesList(prev => prev.map(c => c.id === coachId ? { ...c, ...updates } : c));
-    
-    // If we are updating the currently logged in coach, update that state too
-    if (loggedInCoach && loggedInCoach.id === coachId) {
-      setLoggedInCoach(prev => prev ? { ...prev, ...updates } : null);
-    }
+  const handleUpdateCoach = async (coachId: string, updates: Partial<Coach>) => {
+    try {
+      await setDoc(doc(db, 'coaches', coachId), updates, { merge: true });
+      
+      // Also update the user document if name or email changed
+      if (updates.name || updates.email) {
+        const userUpdates: any = {};
+        if (updates.name) userUpdates.name = updates.name;
+        if (updates.email) userUpdates.email = updates.email;
+        await setDoc(doc(db, 'users', coachId), userUpdates, { merge: true });
+      }
 
-    // Also update the corresponding self-client if it exists
-    const selfClientId = `self_${coachId}`;
-    setClientsList(prev => prev.map(c => c.id === selfClientId ? { 
-      ...c, 
-      name: updates.name ? `${updates.name} (Yo)` : c.name,
-      img: updates.img || c.img 
-    } : c));
+      // If this is the logged in coach, update state
+      if (loggedInCoach && loggedInCoach.id === coachId) {
+        setLoggedInCoach(prev => prev ? { ...prev, ...updates } : null);
+      }
+
+      // Also update the corresponding self-client if it exists
+      const selfClientId = `self_${coachId}`;
+      const selfClientUpdates: Partial<Client> = {};
+      if (updates.name) selfClientUpdates.name = `${updates.name} (Yo)`;
+      if (updates.img) selfClientUpdates.img = updates.img;
+
+      if (Object.keys(selfClientUpdates).length > 0) {
+        await setDoc(doc(db, 'clients', selfClientId), selfClientUpdates, { merge: true });
+      }
+    } catch (error) {
+      console.error("Error updating coach:", error);
+      setToast({ show: true, message: "Error al actualizar el perfil", type: 'error' });
+    }
   };
 
-  const handleReportDiscomfort = (exerciseName: string, description?: string, painLevel?: number) => {
-    if (userRole === 'client') {
-      const client = clientsList[0]; // Simplified for demo
-      if (client && client.name) {
-        const newNotification: Notification = {
-          id: Date.now().toString(),
-          clientId: client.id,
-          clientName: client.name,
+  const handleReportDiscomfort = async (exerciseName: string, description?: string, painLevel?: number) => {
+    if (userRole === 'client' && currentClient) {
+      try {
+        const newNotification = {
+          clientId: currentClient.id,
+          clientName: currentClient.name,
           exerciseName: exerciseName,
-          description: description,
-          painLevel: painLevel,
-          timestamp: new Date(),
+          description: description || '',
+          painLevel: painLevel || 0,
+          timestamp: serverTimestamp(),
           read: false,
+          assignedCoachId: currentClient.assignedCoachId || ''
         };
-        setNotifications(prev => [newNotification, ...prev]);
+        
+        await addDoc(collection(db, 'notifications'), newNotification);
+        setToast({ show: true, message: "Reporte enviado al coach", type: 'success' });
+      } catch (error) {
+        console.error("Error reporting discomfort:", error);
+        setToast({ show: true, message: "Error al enviar el reporte", type: 'error' });
       }
     }
   };
@@ -5843,6 +6198,8 @@ export default function App() {
               <RegisterScreen 
                 onRegister={handleRegister} 
                 onBack={() => setScreen('dashboard')}
+                coaches={coachesList}
+                userRole={userRole}
               />
             )}
             {screen === 'onboarding' && <OnboardingScreen onComplete={() => setScreen('dashboard')} />}
@@ -5850,7 +6207,6 @@ export default function App() {
               <LoginScreen 
                 setToast={setToast}
                 onLogin={handleLogin}
-                coaches={coachesList}
               />
             )}
             {screen === 'home' && <HomeScreen isCoach={isCoachViewing} clientData={currentClient} coaches={coachesList} />}
@@ -5888,6 +6244,7 @@ export default function App() {
                 onToggleDarkMode={() => setDarkMode(!darkMode)}
                 onLogout={handleLogout}
                 coaches={coachesList}
+                setToast={setToast}
               />
             )}
           </motion.div>

@@ -1,88 +1,106 @@
 {
   "entities": {
     "User": {
-      "title": "User Profile",
-      "description": "User information and access role.",
+      "title": "User",
+      "description": "Base user profile for authentication and role management",
       "type": "object",
       "properties": {
-        "email": { "type": "string" },
+        "id": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "name": { "type": "string" },
         "role": { "type": "string", "enum": ["admin", "coach", "client"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "active": { "type": "boolean" }
+      },
+      "required": ["email", "name", "role", "createdAt"]
+    },
+    "Coach": {
+      "title": "Coach",
+      "description": "Coach specific profile data",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
         "name": { "type": "string" },
-        "createdAt": { "type": "string", "format": "date-time" }
+        "img": { "type": "string", "format": "uri" },
+        "phone": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "specialty": { "type": "string" }
       },
-      "required": ["email", "role"]
+      "required": ["name", "email"]
     },
-    "ExerciseLibrary": {
-      "title": "Exercise Library",
-      "description": "A collection of reusable exercise definitions.",
+    "Client": {
+      "title": "Client",
+      "description": "Client profile with health targets and coach assignment",
       "type": "object",
       "properties": {
-        "name": { "type": "string", "description": "Name of the exercise" },
-        "video": { "type": "string", "description": "URL to the technique video or GIF" },
-        "equipment": { "type": "string", "description": "Equipment needed" },
-        "bodyPart": { "type": "string", "description": "Target body part" },
-        "target": { "type": "string", "description": "Specific target muscle" }
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "img": { "type": "string", "format": "uri" },
+        "program": { "type": "string" },
+        "status": { "type": "string" },
+        "active": { "type": "boolean" },
+        "weight": { "type": "string" },
+        "targetWeight": { "type": "number" },
+        "bodyFat": { "type": "string" },
+        "stepsTarget": { "type": "number" },
+        "waterTarget": { "type": "number" },
+        "assignedCoachId": { "type": "string" },
+        "dietType": { "type": "string" },
+        "allergies": { "type": "string" },
+        "enabledSections": { "type": "array", "items": { "type": "string" } }
       },
-      "required": ["name"]
+      "required": ["name", "assignedCoachId"]
     },
-    "WorkoutDay": {
-      "title": "Workout Day",
-      "description": "A single workout session for a client.",
+    "DailyLog": {
+      "title": "DailyLog",
+      "description": "Daily health and activity tracking for a client",
       "type": "object",
       "properties": {
+        "clientId": { "type": "string" },
+        "date": { "type": "string", "format": "date" },
+        "weight": { "type": "number" },
+        "sleepHours": { "type": "number" },
+        "sleepQuality": { "type": "string", "enum": ["Mal", "Regular", "Bien", "Excelente"] },
+        "waterCompleted": { "type": "boolean" },
+        "stepsCompleted": { "type": "number" },
+        "kcalConsumed": { "type": "number" }
+      },
+      "required": ["clientId", "date"]
+    },
+    "Diet": {
+      "title": "Diet",
+      "description": "Diet plan for a client",
+      "type": "object",
+      "properties": {
+        "clientId": { "type": "string" },
         "title": { "type": "string" },
-        "subtitle": { "type": "string" },
-        "exercises": {
-          "type": "array",
-          "items": {
-            "$ref": "Exercise"
-          }
-        },
-        "clientId": { "type": "string" }
+        "pdfUrl": { "type": "string", "format": "uri" },
+        "content": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["title", "clientId"]
-    },
-    "Exercise": {
-      "title": "Exercise Instance",
-      "description": "An instance of an exercise within a workout day.",
-      "type": "object",
-      "properties": {
-        "name": { "type": "string" },
-        "sets": { "type": "number" },
-        "reps": { "type": "string" },
-        "rest": { "type": "number" },
-        "video": { "type": "string" },
-        "equipment": { "type": "string" },
-        "clientEntersWeight": { "type": "boolean" },
-        "initialSets": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "properties": {
-              "id": { "type": "number" },
-              "kg": { "type": "number" },
-              "reps": { "type": "number" },
-              "rpe": { "type": "number" },
-              "rir": { "type": "number" },
-              "completed": { "type": "boolean" }
-            }
-          }
-        }
-      }
+      "required": ["clientId", "title"]
     }
   },
   "firestore": {
-    "/exercises_library": {
-      "schema": "ExerciseLibrary",
-      "description": "Global library of exercises created by the coach."
-    },
-    "/workout_programs/{programId}": {
-      "schema": "WorkoutDay",
-      "description": "Workout programs assigned to clients."
-    },
     "/users/{userId}": {
       "schema": "User",
-      "description": "User profiles and roles."
+      "description": "User profiles"
+    },
+    "/coaches/{coachId}": {
+      "schema": "Coach",
+      "description": "Coach profiles"
+    },
+    "/clients/{clientId}": {
+      "schema": "Client",
+      "description": "Client profiles"
+    },
+    "/clients/{clientId}/logs/{logId}": {
+      "schema": "DailyLog",
+      "description": "Daily tracking logs for clients"
+    },
+    "/clients/{clientId}/diets/{dietId}": {
+      "schema": "Diet",
+      "description": "Diet plans for clients"
     }
   }
 }

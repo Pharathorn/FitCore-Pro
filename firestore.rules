@@ -1,0 +1,120 @@
+// ===============================================================
+// Assumed Data Model
+// ===============================================================
+//
+// Collection: exercises_library
+// Document ID: auto-generated
+// Fields:
+//   - name: string (required) - Name of the exercise
+//   - video: string (optional) - URL to the technique video or GIF
+//   - equipment: string (optional) - Equipment needed
+//   - bodyPart: string (optional) - Target body part
+//   - target: string (optional) - Specific target muscle
+//
+// Collection: workout_programs
+// Document ID: auto-generated
+// Fields:
+//   - title: string (required) - Title of the workout day
+//   - subtitle: string (optional) - Subtitle/description
+//   - exercises: array (required) - List of exercise instances
+//   - clientId: string (required) - ID of the client this program belongs to
+//
+// ===============================================================
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (request.auth.token.email == "alvarowowplayer@gmail.com" ||
+         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'));
+    }
+
+    function isAuthorized() {
+      return isAuthenticated() && 
+        (request.auth.token.email == "alvarowowplayer@gmail.com" ||
+         exists(/databases/$(database)/documents/users/$(request.auth.uid)));
+    }
+
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidUser(data) {
+      return hasRequiredFields(['email', 'role']) &&
+             data.email is string && isValidEmail(data.email) &&
+             data.role in ['admin', 'coach', 'client'] &&
+             (!('name' in data) || (data.name is string && data.name.size() < 100)) &&
+             (!('createdAt' in data) || data.createdAt is timestamp);
+    }
+
+    function isValidExerciseLibrary(data) {
+      return hasRequiredFields(['name', 'name_lowercase', 'createdAt']) &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.name_lowercase is string && data.name_lowercase.size() > 0 && data.name_lowercase.size() < 100 &&
+             data.createdAt is timestamp &&
+             (!('video' in data) || (data.video is string || data.video == null)) &&
+             (!('equipment' in data) || (data.equipment is string || data.equipment == null)) &&
+             (!('bodyPart' in data) || (data.bodyPart is string || data.bodyPart == null)) &&
+             (!('target' in data) || (data.target is string || data.target == null));
+    }
+
+    function isValidWorkoutProgram(data) {
+      return hasRequiredFields(['title', 'clientId', 'exercises']) &&
+             data.title is string && data.title.size() > 0 && data.title.size() < 200 &&
+             data.clientId is string &&
+             data.exercises is list;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      // Only admins can create users. Users can update their own profile (limited fields).
+      allow create: if isAdmin() && isValidUser(request.resource.data);
+      allow update: if (isOwner(userId) && hasOnlyAllowedFields(['name', 'photoURL'])) || (isAdmin() && isValidUser(request.resource.data));
+    }
+
+    match /exercises_library/{exerciseId} {
+      // Authorized users can read the library
+      allow read: if isAuthorized();
+      // Only admins can create/update/delete exercises in the library
+      allow create, update: if isAdmin() && isValidExerciseLibrary(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /workout_programs/{programId} {
+      // Clients can read their own programs, admins can read everything
+      allow read: if isAuthorized() && (resource.data.clientId == request.auth.uid || isAdmin());
+      // Admins can create/update/delete programs
+      allow create, update: if isAdmin() && isValidWorkoutProgram(request.resource.data);
+      allow delete: if isAdmin();
+      // Clients can update their own programs (to record progress)
+      allow update: if isAuthorized() && resource.data.clientId == request.auth.uid && isValidWorkoutProgram(request.resource.data);
+    }
+  }
+}

@@ -1,0 +1,88 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "User information and access role.",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "coach", "client"] },
+        "name": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["email", "role"]
+    },
+    "ExerciseLibrary": {
+      "title": "Exercise Library",
+      "description": "A collection of reusable exercise definitions.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Name of the exercise" },
+        "video": { "type": "string", "description": "URL to the technique video or GIF" },
+        "equipment": { "type": "string", "description": "Equipment needed" },
+        "bodyPart": { "type": "string", "description": "Target body part" },
+        "target": { "type": "string", "description": "Specific target muscle" }
+      },
+      "required": ["name"]
+    },
+    "WorkoutDay": {
+      "title": "Workout Day",
+      "description": "A single workout session for a client.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "subtitle": { "type": "string" },
+        "exercises": {
+          "type": "array",
+          "items": {
+            "$ref": "Exercise"
+          }
+        },
+        "clientId": { "type": "string" }
+      },
+      "required": ["title", "clientId"]
+    },
+    "Exercise": {
+      "title": "Exercise Instance",
+      "description": "An instance of an exercise within a workout day.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "sets": { "type": "number" },
+        "reps": { "type": "string" },
+        "rest": { "type": "number" },
+        "video": { "type": "string" },
+        "equipment": { "type": "string" },
+        "clientEntersWeight": { "type": "boolean" },
+        "initialSets": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "number" },
+              "kg": { "type": "number" },
+              "reps": { "type": "number" },
+              "rpe": { "type": "number" },
+              "rir": { "type": "number" },
+              "completed": { "type": "boolean" }
+            }
+          }
+        }
+      }
+    }
+  },
+  "firestore": {
+    "/exercises_library": {
+      "schema": "ExerciseLibrary",
+      "description": "Global library of exercises created by the coach."
+    },
+    "/workout_programs/{programId}": {
+      "schema": "WorkoutDay",
+      "description": "Workout programs assigned to clients."
+    },
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles and roles."
+    }
+  }
+}

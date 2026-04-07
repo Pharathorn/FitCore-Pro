@@ -67,6 +67,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { GoogleGenAI, Type } from "@google/genai";
 import { jsPDF } from "jspdf";
+import autoTable from 'jspdf-autotable';
 import { 
   BarChart, 
   Bar, 
@@ -92,12 +93,13 @@ import {
   serverTimestamp,
   getDocFromServer
 } from 'firebase/firestore';
-import { initializeApp } from 'firebase/app';
+import { initializeApp, deleteApp } from 'firebase/app';
 import { 
   getAuth, 
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword, 
-  signOut 
+  signOut,
+  sendPasswordResetEmail
 } from 'firebase/auth';
 import { 
   ref, 
@@ -323,7 +325,16 @@ function cn(...inputs: ClassValue[]) {
 }
 
 // --- Types ---
-type Screen = 'home' | 'dashboard' | 'workout' | 'timer' | 'nutrition' | 'progress' | 'profile' | 'onboarding' | 'login' | 'welcome' | 'register' | 'coach_self';
+type Screen = 'home' | 'dashboard' | 'workout' | 'timer' | 'nutrition' | 'progress' | 'profile' | 'onboarding' | 'login' | 'welcome' | 'register' | 'coach_self' | 'user_management';
+
+interface UserProfile {
+  id: string;
+  email: string;
+  name: string;
+  role: 'admin' | 'coach' | 'client';
+  active: boolean;
+  createdAt: any;
+}
 
 interface EnabledSections {
   training: boolean;
@@ -376,6 +387,88 @@ interface Notification {
   read: boolean;
 }
 
+interface IntakeForm {
+  general: {
+    fullName: string;
+    age: string;
+    gender: string;
+    height: string;
+    weight: string;
+    phone: string;
+    profession: string;
+  };
+  objectives: {
+    main: string;
+    other: string;
+    specific: string[];
+    targetDate: string;
+  };
+  medical: {
+    medication: string;
+    smoker: string;
+    injuries: string;
+    pains: string;
+    conditions: string;
+    surgeries: string;
+    limitations: string;
+  };
+  sports: {
+    currentlyActive: string;
+    type: string;
+    frequency: string;
+    experienceTime: string;
+    workedWithCoach: string;
+    ratings: {
+      strength: number;
+      endurance: number;
+      flexibility: number;
+      coordination: number;
+    };
+  };
+  lifestyle: {
+    activityLevel: string;
+    workHours: string;
+    workType: string;
+    stressLevel: string;
+    sleepHours: string;
+    sleepQuality: string;
+  };
+  nutrition: {
+    mealsPerDay: string;
+    currentDiet: string;
+    waterIntake: string;
+    alcohol: string;
+    supplements: string;
+  };
+  availability: {
+    daysPerWeek: string;
+    timePerSession: string;
+    location: string;
+  };
+  measurements: {
+    weight: string;
+    waist: string;
+    hips: string;
+    chest: string;
+    arm: string;
+    thigh: string;
+    calf: string;
+  };
+  selfAssessment: {
+    fatigue: string;
+    exerciseFrequency: string;
+    mobilityLimits: string;
+    abs10: string;
+    perceivedLevel: string;
+  };
+  motivation: {
+    level: number;
+    obstacles: string;
+    reason: string;
+    coachNotes: string;
+  };
+}
+
 interface Client {
   id: string;
   name: string;
@@ -397,6 +490,7 @@ interface Client {
   enabledSections: EnabledSections;
   diets?: DietFile[];
   workouts?: DietFile[];
+  intakeForm?: IntakeForm;
 }
 
 interface DietFile {
@@ -580,6 +674,627 @@ const CustomConfirm = ({
     </div>
   </AnimatePresence>
 );
+
+const generateIntakePdf = (data: IntakeForm, clientName: string) => {
+  const doc = new jsPDF();
+  const primaryColor = [50, 95, 235]; // #325feb
+  
+  // Header
+  doc.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+  doc.rect(0, 0, 210, 40, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(24);
+  doc.setFont("helvetica", "bold");
+  doc.text("FICHA NUEVO CLIENTE", 20, 25);
+  doc.setFontSize(10);
+  doc.text("ÁLVARO RUÍZ - ENTRENADOR PERSONAL", 20, 32);
+  
+  let y = 50;
+  const checkPage = (height: number) => {
+    if (y + height > 280) {
+      doc.addPage();
+      y = 20;
+    }
+  };
+
+  const sectionHeader = (title: string) => {
+    checkPage(15);
+    doc.setFillColor(240, 240, 240);
+    doc.rect(15, y, 180, 10, 'F');
+    doc.setTextColor(0, 0, 0);
+    doc.setFontSize(12);
+    doc.setFont("helvetica", "bold");
+    doc.text(title, 20, y + 7);
+    y += 15;
+  };
+
+  const field = (label: string, value: string, width: number = 90) => {
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(100, 100, 100);
+    doc.text(label.toUpperCase(), 20, y);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(0, 0, 0);
+    doc.text(value || "---", 20, y + 5);
+  };
+
+  // 1. Datos Generales
+  sectionHeader("1. DATOS GENERALES");
+  field("Nombre completo", data.general.fullName);
+  doc.text("EDAD: " + (data.general.age || "---"), 110, y + 5);
+  y += 15;
+  field("Sexo", data.general.gender);
+  doc.text("ALTURA: " + (data.general.height || "---") + " cm", 110, y + 5);
+  y += 15;
+  field("Peso actual", data.general.weight + " kg");
+  doc.text("TELÉFONO: " + (data.general.phone || "---"), 110, y + 5);
+  y += 15;
+  field("Profesión", data.general.profession);
+  y += 20;
+
+  // 2. Objetivo Principal
+  sectionHeader("2. OBJETIVO PRINCIPAL");
+  field("Objetivo principal", data.objectives.main);
+  if (data.objectives.main === 'Otro') doc.text("ESPECIFICA: " + data.objectives.other, 110, y + 5);
+  y += 15;
+  field("Objetivos específicos", data.objectives.specific.filter(s => s).join(", "));
+  y += 15;
+  field("Fecha objetivo", data.objectives.targetDate);
+  y += 20;
+
+  // 3. Historial Médico
+  sectionHeader("3. HISTORIAL MÉDICO");
+  field("Medicación", data.medical.medication);
+  y += 12;
+  field("Fumas", data.medical.smoker);
+  y += 12;
+  field("Lesiones relevantes", data.medical.injuries);
+  y += 12;
+  field("Dolores actuales", data.medical.pains);
+  y += 12;
+  field("Problemas cardiovasculares", data.medical.conditions);
+  y += 12;
+  field("Cirugías recientes", data.medical.surgeries);
+  y += 12;
+  field("Limitaciones médicas", data.medical.limitations);
+  y += 20;
+
+  // 4. Historial Deportivo
+  sectionHeader("4. HISTORIAL DEPORTIVO");
+  field("Practica ejercicio", data.sports.currentlyActive);
+  y += 12;
+  field("Tipo de entrenamiento", data.sports.type);
+  y += 12;
+  field("Frecuencia semanal", data.sports.frequency);
+  y += 12;
+  field("Tiempo entrenando", data.sports.experienceTime);
+  y += 12;
+  field("Entrenador anterior", data.sports.workedWithCoach);
+  y += 15;
+  doc.text(`VALORACIÓN (1-5): Fuerza: ${data.sports.ratings.strength} | Resistencia: ${data.sports.ratings.endurance} | Flex: ${data.sports.ratings.flexibility} | Coord: ${data.sports.ratings.coordination}`, 20, y);
+  y += 20;
+
+  // 5. Estilo de Vida
+  sectionHeader("5. ESTILO DE VIDA");
+  field("Nivel actividad", data.lifestyle.activityLevel);
+  y += 12;
+  field("Horas trabajo", data.lifestyle.workHours);
+  y += 12;
+  field("Tipo trabajo", data.lifestyle.workType);
+  y += 12;
+  field("Estrés", data.lifestyle.stressLevel);
+  y += 12;
+  field("Sueño", `${data.lifestyle.sleepHours}h (${data.lifestyle.sleepQuality})`);
+  y += 20;
+
+  // 6. Hábitos Nutricionales
+  sectionHeader("6. HÁBITOS NUTRICIONALES");
+  field("Comidas/día", data.nutrition.mealsPerDay);
+  y += 12;
+  field("Dieta actual", data.nutrition.currentDiet);
+  y += 12;
+  field("Agua (L/día)", data.nutrition.waterIntake);
+  y += 12;
+  field("Alcohol", data.nutrition.alcohol);
+  y += 12;
+  field("Suplementación", data.nutrition.supplements);
+  y += 20;
+
+  // 7. Disponibilidad
+  sectionHeader("7. DISPONIBILIDAD");
+  field("Días/semana", data.availability.daysPerWeek);
+  y += 12;
+  field("Tiempo/sesión", data.availability.timePerSession);
+  y += 12;
+  field("Lugar", data.availability.location);
+  y += 20;
+
+  // 8. Mediciones
+  sectionHeader("8. MEDICIONES INICIALES");
+  doc.text(`Peso: ${data.measurements.weight} | Cintura: ${data.measurements.waist} | Cadera: ${data.measurements.hips} | Pecho: ${data.measurements.chest}`, 20, y);
+  y += 10;
+  doc.text(`Brazo: ${data.measurements.arm} | Muslo: ${data.measurements.thigh} | Pantorrilla: ${data.measurements.calf}`, 20, y);
+  y += 20;
+
+  // 9. Autoevaluación
+  sectionHeader("9. AUTOEVALUACIÓN FÍSICA");
+  field("Fatiga", data.selfAssessment.fatigue);
+  y += 12;
+  field("Ejercicio >= 3/sem", data.selfAssessment.exerciseFrequency);
+  y += 12;
+  field("Movilidad", data.selfAssessment.mobilityLimits);
+  y += 12;
+  field("10 abdominales", data.selfAssessment.abs10);
+  y += 12;
+  field("Nivel percibido", data.selfAssessment.perceivedLevel);
+  y += 20;
+
+  // 10. Motivación
+  sectionHeader("10. MOTIVACIÓN Y ADHERENCIA");
+  field("Motivación (1-5)", data.motivation.level.toString());
+  y += 12;
+  field("Obstáculos", data.motivation.obstacles);
+  y += 12;
+  field("Razón del cambio", data.motivation.reason);
+  y += 15;
+  doc.setFont("helvetica", "bold");
+  doc.text("OBSERVACIONES DEL ENTRENADOR:", 20, y);
+  y += 5;
+  doc.setFont("helvetica", "normal");
+  doc.text(data.motivation.coachNotes || "---", 20, y, { maxWidth: 170 });
+
+  doc.save(`Ficha_${clientName.replace(/\s+/g, '_')}.pdf`);
+};
+
+const IntakeFormModal = ({ 
+  isOpen, 
+  onClose, 
+  client, 
+  onSave 
+}: { 
+  isOpen: boolean; 
+  onClose: () => void; 
+  client: Client; 
+  onSave: (data: IntakeForm) => void 
+}) => {
+  const [formData, setFormData] = useState<IntakeForm>(client.intakeForm || {
+    general: { fullName: client.name, age: '', gender: '', height: '', weight: '', phone: '', profession: '' },
+    objectives: { main: '', other: '', specific: ['', '', ''], targetDate: '' },
+    medical: { medication: '', smoker: '', injuries: '', pains: '', conditions: '', surgeries: '', limitations: '' },
+    sports: { currentlyActive: '', type: '', frequency: '', experienceTime: '', workedWithCoach: '', ratings: { strength: 3, endurance: 3, flexibility: 3, coordination: 3 } },
+    lifestyle: { activityLevel: '', workHours: '', workType: '', stressLevel: '', sleepHours: '', sleepQuality: '' },
+    nutrition: { mealsPerDay: '', currentDiet: '', waterIntake: '', alcohol: '', supplements: '' },
+    availability: { daysPerWeek: '', timePerSession: '', location: '' },
+    measurements: { weight: '', waist: '', hips: '', chest: '', arm: '', thigh: '', calf: '' },
+    selfAssessment: { fatigue: '', exerciseFrequency: '', mobilityLimits: '', abs10: '', perceivedLevel: '' },
+    motivation: { level: 5, obstacles: '', reason: '', coachNotes: '' }
+  });
+
+  const [activeTab, setActiveTab] = useState(0);
+  const tabs = ["General", "Médico", "Deporte", "Vida", "Nutri", "Medidas", "Auto"];
+
+  if (!isOpen) return null;
+
+  const updateSection = (section: keyof IntakeForm, updates: any) => {
+    setFormData(prev => ({
+      ...prev,
+      [section]: { ...prev[section], ...updates }
+    }));
+  };
+
+  return (
+    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 sm:p-6">
+      <motion.div 
+        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+        onClick={onClose}
+        className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+      />
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.95, y: 20 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.95, y: 20 }}
+        className="relative w-full max-w-2xl bg-bg-dark border border-black/10 dark:border-white/10 rounded-3xl overflow-hidden flex flex-col max-h-[90vh]"
+      >
+        <header className="p-6 border-b border-black/10 dark:border-white/10 flex items-center justify-between shrink-0">
+          <div>
+            <h3 className="text-xl font-black italic text-text-bright">FICHA NUEVO CLIENTE</h3>
+            <p className="text-xs text-text-muted">Evaluación inicial profesional</p>
+          </div>
+          <div className="flex gap-2">
+            <button 
+              onClick={() => generateIntakePdf(formData, client.name)}
+              className="p-2 bg-primary/10 text-primary rounded-lg hover:bg-primary/20 transition-colors"
+              title="Descargar PDF"
+            >
+              <Download className="size-5" />
+            </button>
+            <button onClick={onClose} className="p-2 hover:bg-bg-surface rounded-full">
+              <X className="size-6" />
+            </button>
+          </div>
+        </header>
+
+        <div className="flex overflow-x-auto no-scrollbar border-b border-black/10 dark:border-white/10 px-4 shrink-0">
+          {tabs.map((tab, i) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(i)}
+              className={cn(
+                "px-4 py-3 text-[10px] font-bold uppercase tracking-widest border-b-2 transition-all whitespace-nowrap",
+                activeTab === i ? "border-primary text-primary" : "border-transparent text-text-muted"
+              )}
+            >
+              {tab}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-6 space-y-8">
+          {activeTab === 0 && (
+            <div className="space-y-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Nombre Completo</label>
+                  <input 
+                    type="text" value={formData.general.fullName}
+                    onChange={(e) => updateSection('general', { fullName: e.target.value })}
+                    className="w-full bg-bg-surface/50 border border-black/10 dark:border-white/10 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-primary"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Edad</label>
+                    <input 
+                      type="number" value={formData.general.age}
+                      onChange={(e) => updateSection('general', { age: e.target.value })}
+                      className="w-full bg-bg-surface/50 border border-black/10 dark:border-white/10 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-primary"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Sexo</label>
+                    <input 
+                      type="text" value={formData.general.gender}
+                      onChange={(e) => updateSection('general', { gender: e.target.value })}
+                      className="w-full bg-bg-surface/50 border border-black/10 dark:border-white/10 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-primary"
+                    />
+                  </div>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Altura (cm)</label>
+                  <input 
+                    type="number" value={formData.general.height}
+                    onChange={(e) => updateSection('general', { height: e.target.value })}
+                    className="w-full bg-bg-surface/50 border border-black/10 dark:border-white/10 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-primary"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Peso (kg)</label>
+                  <input 
+                    type="number" value={formData.general.weight}
+                    onChange={(e) => updateSection('general', { weight: e.target.value })}
+                    className="w-full bg-bg-surface/50 border border-black/10 dark:border-white/10 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-primary"
+                  />
+                </div>
+                <div className="space-y-2 col-span-2 sm:col-span-1">
+                  <label className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Teléfono</label>
+                  <input 
+                    type="text" value={formData.general.phone}
+                    onChange={(e) => updateSection('general', { phone: e.target.value })}
+                    className="w-full bg-bg-surface/50 border border-black/10 dark:border-white/10 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-primary"
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Profesión</label>
+                <input 
+                  type="text" value={formData.general.profession}
+                  onChange={(e) => updateSection('general', { profession: e.target.value })}
+                  className="w-full bg-bg-surface/50 border border-black/10 dark:border-white/10 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-primary"
+                />
+              </div>
+
+              <div className="pt-4 border-t border-black/10 dark:border-white/10">
+                <h4 className="text-sm font-bold mb-4">Objetivos</h4>
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Objetivo Principal</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {['Pérdida de grasa', 'Ganancia muscular', 'Recomp. corporal', 'Rendimiento deportivo', 'Salud general', 'Otro'].map(obj => (
+                        <button
+                          key={obj} type="button"
+                          onClick={() => updateSection('objectives', { main: obj })}
+                          className={cn(
+                            "py-2 px-3 rounded-lg text-xs font-bold border transition-all",
+                            formData.objectives.main === obj ? "bg-primary text-bg-dark border-primary" : "bg-bg-surface/50 border-black/10 dark:border-white/10 text-text-muted"
+                          )}
+                        >
+                          {obj}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  {formData.objectives.main === 'Otro' && (
+                    <input 
+                      type="text" placeholder="Especifica otro objetivo..."
+                      value={formData.objectives.other}
+                      onChange={(e) => updateSection('objectives', { other: e.target.value })}
+                      className="w-full bg-bg-surface/50 border border-black/10 dark:border-white/10 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-primary"
+                    />
+                  )}
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Objetivos Específicos (Máx 3)</label>
+                    {formData.objectives.specific.map((s, idx) => (
+                      <input 
+                        key={idx} type="text" placeholder={`Objetivo ${idx + 1}`}
+                        value={s}
+                        onChange={(e) => {
+                          const newSpecific = [...formData.objectives.specific];
+                          newSpecific[idx] = e.target.value;
+                          updateSection('objectives', { specific: newSpecific });
+                        }}
+                        className="w-full bg-bg-surface/50 border border-black/10 dark:border-white/10 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-primary mb-2"
+                      />
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 1 && (
+            <div className="space-y-4">
+              {[
+                { id: 'medication', label: '¿Tomas medicación? ¿Cuál?' },
+                { id: 'smoker', label: '¿Fumas?' },
+                { id: 'injuries', label: '¿Has tenido alguna lesión relevante?' },
+                { id: 'pains', label: 'Dolores actuales (espalda, rodilla, etc.)' },
+                { id: 'conditions', label: 'Problemas cardiovasculares / resp / metabólicos' },
+                { id: 'surgeries', label: '¿Cirugías recientes?' },
+                { id: 'limitations', label: '¿Alguna limitación médica para entrenar?' },
+              ].map(f => (
+                <div key={f.id} className="space-y-2">
+                  <label className="text-[10px] font-bold text-text-muted uppercase tracking-widest">{f.label}</label>
+                  <textarea 
+                    value={(formData.medical as any)[f.id]}
+                    onChange={(e) => updateSection('medical', { [f.id]: e.target.value })}
+                    className="w-full bg-bg-surface/50 border border-black/10 dark:border-white/10 rounded-xl p-4 outline-none focus:ring-2 focus:ring-primary resize-none h-20"
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+
+          {activeTab === 2 && (
+            <div className="space-y-6">
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-text-muted uppercase tracking-widest">¿Practicas ejercicio actualmente?</label>
+                  <input 
+                    type="text" value={formData.sports.currentlyActive}
+                    onChange={(e) => updateSection('sports', { currentlyActive: e.target.value })}
+                    className="w-full bg-bg-surface/50 border border-black/10 dark:border-white/10 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-primary"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Tipo de entrenamiento</label>
+                    <input 
+                      type="text" value={formData.sports.type}
+                      onChange={(e) => updateSection('sports', { type: e.target.value })}
+                      className="w-full bg-bg-surface/50 border border-black/10 dark:border-white/10 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-primary"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Frecuencia semanal</label>
+                    <input 
+                      type="text" value={formData.sports.frequency}
+                      onChange={(e) => updateSection('sports', { frequency: e.target.value })}
+                      className="w-full bg-bg-surface/50 border border-black/10 dark:border-white/10 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-primary"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Tiempo entrenando</label>
+                    <input 
+                      type="text" value={formData.sports.experienceTime}
+                      onChange={(e) => updateSection('sports', { experienceTime: e.target.value })}
+                      className="w-full bg-bg-surface/50 border border-black/10 dark:border-white/10 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-primary"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-text-muted uppercase tracking-widest">¿Entrenador antes?</label>
+                    <input 
+                      type="text" value={formData.sports.workedWithCoach}
+                      onChange={(e) => updateSection('sports', { workedWithCoach: e.target.value })}
+                      className="w-full bg-bg-surface/50 border border-black/10 dark:border-white/10 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-primary"
+                    />
+                  </div>
+                </div>
+              </div>
+              <div className="pt-4 border-t border-black/10 dark:border-white/10">
+                <h4 className="text-sm font-bold mb-4">Valoración (1-5)</h4>
+                <div className="grid grid-cols-2 gap-6">
+                  {Object.entries(formData.sports.ratings).map(([key, val]) => (
+                    <div key={key} className="space-y-2">
+                      <div className="flex justify-between items-center">
+                        <label className="text-[10px] font-bold text-text-muted uppercase tracking-widest capitalize">{key}</label>
+                        <span className="text-primary font-black">{val}</span>
+                      </div>
+                      <input 
+                        type="range" min="1" max="5" step="1"
+                        value={val}
+                        onChange={(e) => updateSection('sports', { ratings: { ...formData.sports.ratings, [key]: parseInt(e.target.value) } })}
+                        className="w-full accent-primary"
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 3 && (
+            <div className="space-y-4">
+              {[
+                { id: 'activityLevel', label: 'Nivel de actividad diaria (sedentario / activo)' },
+                { id: 'workHours', label: 'Horas de trabajo semanales' },
+                { id: 'workType', label: 'Tipo de trabajo (sentado / activo)' },
+                { id: 'stressLevel', label: 'Nivel de estrés' },
+                { id: 'sleepHours', label: 'Horas de sueño' },
+                { id: 'sleepQuality', label: 'Calidad del descanso' },
+              ].map(f => (
+                <div key={f.id} className="space-y-2">
+                  <label className="text-[10px] font-bold text-text-muted uppercase tracking-widest">{f.label}</label>
+                  <input 
+                    type="text" value={(formData.lifestyle as any)[f.id]}
+                    onChange={(e) => updateSection('lifestyle', { [f.id]: e.target.value })}
+                    className="w-full bg-bg-surface/50 border border-black/10 dark:border-white/10 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-primary"
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+
+          {activeTab === 4 && (
+            <div className="space-y-4">
+              {[
+                { id: 'mealsPerDay', label: 'Número de comidas al día' },
+                { id: 'currentDiet', label: '¿Sigues alguna dieta actualmente?' },
+                { id: 'waterIntake', label: 'Consumo de agua (L/día)' },
+                { id: 'alcohol', label: 'Alcohol' },
+                { id: 'supplements', label: 'Suplementación' },
+              ].map(f => (
+                <div key={f.id} className="space-y-2">
+                  <label className="text-[10px] font-bold text-text-muted uppercase tracking-widest">{f.label}</label>
+                  <input 
+                    type="text" value={(formData.nutrition as any)[f.id]}
+                    onChange={(e) => updateSection('nutrition', { [f.id]: e.target.value })}
+                    className="w-full bg-bg-surface/50 border border-black/10 dark:border-white/10 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-primary"
+                  />
+                </div>
+              ))}
+              <div className="pt-4 border-t border-black/10 dark:border-white/10 space-y-4">
+                <h4 className="text-sm font-bold">Disponibilidad</h4>
+                {[
+                  { id: 'daysPerWeek', label: 'Días por semana disponibles' },
+                  { id: 'timePerSession', label: 'Tiempo por sesión' },
+                  { id: 'location', label: 'Lugar de entrenamiento' },
+                ].map(f => (
+                  <div key={f.id} className="space-y-2">
+                    <label className="text-[10px] font-bold text-text-muted uppercase tracking-widest">{f.label}</label>
+                    <input 
+                      type="text" value={(formData.availability as any)[f.id]}
+                      onChange={(e) => updateSection('availability', { [f.id]: e.target.value })}
+                      className="w-full bg-bg-surface/50 border border-black/10 dark:border-white/10 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-primary"
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {activeTab === 5 && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                {[
+                  { id: 'weight', label: 'Peso' },
+                  { id: 'waist', label: 'Cintura' },
+                  { id: 'hips', label: 'Cadera' },
+                  { id: 'chest', label: 'Pecho' },
+                  { id: 'arm', label: 'Brazo' },
+                  { id: 'thigh', label: 'Muslo' },
+                  { id: 'calf', label: 'Pantorrilla' },
+                ].map(f => (
+                  <div key={f.id} className="space-y-2">
+                    <label className="text-[10px] font-bold text-text-muted uppercase tracking-widest">{f.label}</label>
+                    <input 
+                      type="text" value={(formData.measurements as any)[f.id]}
+                      onChange={(e) => updateSection('measurements', { [f.id]: e.target.value })}
+                      className="w-full bg-bg-surface/50 border border-black/10 dark:border-white/10 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-primary"
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {activeTab === 6 && (
+            <div className="space-y-6">
+              <div className="space-y-4">
+                {[
+                  { id: 'fatigue', label: '¿Te fatigas fácilmente?' },
+                  { id: 'exerciseFrequency', label: '¿Realizas ejercicio >= 3 veces/semana?' },
+                  { id: 'mobilityLimits', label: '¿Tienes limitaciones de movilidad?' },
+                  { id: 'abs10', label: '¿Puedes hacer 10 abdominales?' },
+                  { id: 'perceivedLevel', label: 'Nivel general percibido' },
+                ].map(f => (
+                  <div key={f.id} className="space-y-2">
+                    <label className="text-[10px] font-bold text-text-muted uppercase tracking-widest">{f.label}</label>
+                    <input 
+                      type="text" value={(formData.selfAssessment as any)[f.id]}
+                      onChange={(e) => updateSection('selfAssessment', { [f.id]: e.target.value })}
+                      className="w-full bg-bg-surface/50 border border-black/10 dark:border-white/10 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-primary"
+                    />
+                  </div>
+                ))}
+              </div>
+              <div className="pt-4 border-t border-black/10 dark:border-white/10 space-y-4">
+                <h4 className="text-sm font-bold">Motivación</h4>
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <label className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Nivel de motivación (1-5)</label>
+                    <span className="text-primary font-black">{formData.motivation.level}</span>
+                  </div>
+                  <input 
+                    type="range" min="1" max="5" step="1"
+                    value={formData.motivation.level}
+                    onChange={(e) => updateSection('motivation', { level: parseInt(e.target.value) })}
+                    className="w-full accent-primary"
+                  />
+                </div>
+                {[
+                  { id: 'obstacles', label: 'Principales obstáculos' },
+                  { id: 'reason', label: 'Razón principal para lograr el cambio' },
+                ].map(f => (
+                  <div key={f.id} className="space-y-2">
+                    <label className="text-[10px] font-bold text-text-muted uppercase tracking-widest">{f.label}</label>
+                    <textarea 
+                      value={(formData.motivation as any)[f.id]}
+                      onChange={(e) => updateSection('motivation', { [f.id]: e.target.value })}
+                      className="w-full bg-bg-surface/50 border border-black/10 dark:border-white/10 rounded-xl p-4 outline-none focus:ring-2 focus:ring-primary resize-none h-20"
+                    />
+                  </div>
+                ))}
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-primary uppercase tracking-widest">Observaciones del Entrenador</label>
+                  <textarea 
+                    value={formData.motivation.coachNotes}
+                    onChange={(e) => updateSection('motivation', { coachNotes: e.target.value })}
+                    className="w-full bg-primary/5 border border-primary/20 rounded-xl p-4 outline-none focus:ring-2 focus:ring-primary resize-none h-32"
+                    placeholder="Notas internas para el seguimiento..."
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <footer className="p-6 border-t border-black/10 dark:border-white/10 bg-bg-dark shrink-0">
+          <button 
+            onClick={() => onSave(formData)}
+            className="w-full py-4 bg-primary text-bg-dark font-bold rounded-xl shadow-lg shadow-primary/20 flex items-center justify-center gap-2"
+          >
+            <CheckCircle2 className="size-5" />
+            Guardar Ficha de Cliente
+          </button>
+        </footer>
+      </motion.div>
+    </div>
+  );
+};
 
 const BottomNav = ({ active, onChange, role, clientData }: { active: Screen; onChange: (s: Screen) => void; role: 'admin' | 'coach' | 'client' | null; clientData?: Client | null }) => {
   const isCoach = role === 'admin' || role === 'coach';
@@ -839,16 +1554,18 @@ const DashboardScreen = ({
   onSelectClient, 
   onMarkNotificationRead,
   onUpdateClient,
-  userRole
+  userRole,
+  setScreen
 }: { 
   coach: Coach | null; 
   clients: Client[]; 
-  notifications: Notification[]; 
+  notifications: any[]; 
   onAddClient: () => void; 
   onSelectClient: (client: Client) => void; 
   onMarkNotificationRead: (id: string) => void;
   onUpdateClient: (id: string, updates: Partial<Client>) => void;
   userRole: 'admin' | 'coach' | 'client' | null;
+  setScreen: (screen: Screen) => void;
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
@@ -1004,22 +1721,30 @@ const DashboardScreen = ({
         )}
       </AnimatePresence>
 
-      <div className="p-4 flex gap-2">
-        <button 
-          onClick={() => {
-            const selfClient = clients.find(c => c.id === `self_${coach?.id}`);
-            if (selfClient) onSelectClient(selfClient);
-          }}
-          className="flex-1 py-3 bg-primary/10 text-primary border border-primary/20 rounded-xl font-bold text-sm flex items-center justify-center gap-2"
-        >
-          <User className="size-4" /> Mi Seguimiento
-        </button>
-        {isAdmin && (
+      <div className="p-4 flex flex-col gap-2">
+        <div className="flex gap-2">
+          <button 
+            onClick={() => {
+              const selfClient = clients.find(c => c.id === `self_${coach?.id}`);
+              if (selfClient) onSelectClient(selfClient);
+            }}
+            className="flex-1 py-3 bg-primary/10 text-primary border border-primary/20 rounded-xl font-bold text-sm flex items-center justify-center gap-2"
+          >
+            <User className="size-4" /> Mi Seguimiento
+          </button>
           <button 
             onClick={onAddClient}
             className="flex-1 py-3 bg-primary text-bg-dark rounded-xl font-bold text-sm flex items-center justify-center gap-2"
           >
             <Plus className="size-4" /> Nuevo Cliente
+          </button>
+        </div>
+        {isAdmin && (
+          <button 
+            onClick={() => setScreen('user_management')}
+            className="w-full py-3 bg-bg-surface/50 text-text-bright border border-black/10 dark:border-white/10 rounded-xl font-bold text-sm flex items-center justify-center gap-2 hover:bg-bg-surface/80 transition-all"
+          >
+            <Users className="size-4" /> Gestión de Usuarios (Admin)
           </button>
         )}
       </div>
@@ -1299,13 +2024,119 @@ const WelcomeScreen = ({ onLogin }: { onLogin: () => void }) => {
   );
 };
 
+const UserManagementScreen = ({ 
+  users, 
+  onBack,
+  onBlockUser,
+  onDeleteUser
+}: { 
+  users: UserProfile[]; 
+  onBack: () => void;
+  onBlockUser: (uid: string, disabled: boolean) => Promise<void>;
+  onDeleteUser: (uid: string) => Promise<void>;
+}) => {
+  const [search, setSearch] = useState('');
+  const [roleFilter, setRoleFilter] = useState<'all' | 'admin' | 'coach' | 'client'>('all');
+
+  const filteredUsers = users.filter(u => {
+    const matchesSearch = u.name.toLowerCase().includes(search.toLowerCase()) || u.email.toLowerCase().includes(search.toLowerCase());
+    const matchesRole = roleFilter === 'all' || u.role === roleFilter;
+    return matchesSearch && matchesRole;
+  });
+
+  return (
+    <div className="min-h-screen bg-bg-dark text-text-bright p-4">
+      <header className="flex items-center gap-4 mb-8">
+        <button onClick={onBack} className="p-2 bg-bg-surface/50 rounded-full">
+          <ArrowLeft className="size-6" />
+        </button>
+        <h1 className="text-2xl font-black italic">Gestión de Usuarios</h1>
+      </header>
+
+      <div className="space-y-4 mb-6">
+        <div className="relative">
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 size-4 text-text-muted" />
+          <input 
+            type="text"
+            placeholder="Buscar por nombre o email..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full h-12 bg-bg-surface/50 border border-black/10 dark:border-white/10 rounded-xl pl-11 pr-4 text-sm outline-none focus:ring-2 focus:ring-primary"
+          />
+        </div>
+        <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+          {['all', 'admin', 'coach', 'client'].map((r) => (
+            <button
+              key={r}
+              onClick={() => setRoleFilter(r as any)}
+              className={cn(
+                "px-4 py-2 rounded-full text-[10px] font-bold uppercase tracking-widest transition-all whitespace-nowrap",
+                roleFilter === r ? "bg-primary text-bg-dark" : "bg-bg-surface/50 text-text-muted border border-black/10 dark:border-white/10"
+              )}
+            >
+              {r === 'all' ? 'Todos' : r}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        {filteredUsers.map((user) => (
+          <div key={user.id} className="p-4 glass-card rounded-xl flex items-center justify-between">
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <h3 className="font-bold">{user.name}</h3>
+                <span className={cn(
+                  "text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded",
+                  user.role === 'admin' ? "bg-red-500 text-white" : user.role === 'coach' ? "bg-primary text-bg-dark" : "bg-bg-surface/50 text-text-muted"
+                )}>
+                  {user.role}
+                </span>
+                {!user.active && (
+                  <span className="bg-red-500/20 text-red-400 text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded">
+                    Bloqueado
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-text-muted">{user.email}</p>
+            </div>
+            <div className="flex gap-2">
+              <button 
+                onClick={() => onBlockUser(user.id, user.active)}
+                className={cn(
+                  "p-2 rounded-lg transition-colors",
+                  user.active ? "bg-orange-500/10 text-orange-500 hover:bg-orange-500/20" : "bg-green-500/10 text-green-500 hover:bg-green-500/20"
+                )}
+                title={user.active ? "Bloquear" : "Desbloquear"}
+              >
+                <Lock className="size-4" />
+              </button>
+              <button 
+                onClick={() => {
+                  if (window.confirm(`¿Estás seguro de eliminar a ${user.name}? Esta acción no se puede deshacer.`)) {
+                    onDeleteUser(user.id);
+                  }
+                }}
+                className="p-2 bg-red-500/10 text-red-500 rounded-lg hover:bg-red-500/20"
+                title="Eliminar"
+              >
+                <Trash2 className="size-4" />
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
 const RegisterScreen = ({ 
   onRegister, 
   onBack, 
   coaches, 
   userRole 
 }: { 
-  onRegister: (email: string, pass: string, name: string, role: 'client' | 'coach', assignedCoachId?: string) => void; 
+  onRegister: (email: string, pass: string, name: string, role: 'client' | 'coach' | 'admin', assignedCoachId?: string) => void; 
   onBack: () => void;
   coaches: Coach[];
   userRole: 'admin' | 'coach' | 'client' | null;
@@ -1314,7 +2145,7 @@ const RegisterScreen = ({
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [name, setName] = useState('');
-  const [role, setRole] = useState<'client' | 'coach'>('client');
+  const [role, setRole] = useState<'client' | 'coach' | 'admin'>('client');
   const [assignedCoachId, setAssignedCoachId] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -1327,6 +2158,11 @@ const RegisterScreen = ({
     
     if (password !== confirmPassword) {
       setError('Las contraseñas no coinciden');
+      return;
+    }
+
+    if (role === 'client' && !assignedCoachId && !isAdmin) {
+      setError('Debes asignar un coach');
       return;
     }
 
@@ -1413,16 +2249,28 @@ const RegisterScreen = ({
               Cliente
             </button>
             {isAdmin && (
-              <button 
-                type="button"
-                onClick={() => setRole('coach')}
-                className={cn(
-                  "flex-1 py-3 rounded-xl font-bold text-sm transition-all border",
-                  role === 'coach' ? "bg-secondary text-bg-dark border-secondary" : "bg-bg-surface/50 border-black/10 dark:border-white/10 text-text-muted"
-                )}
-              >
-                Coach
-              </button>
+              <>
+                <button 
+                  type="button"
+                  onClick={() => setRole('coach')}
+                  className={cn(
+                    "flex-1 py-3 rounded-xl font-bold text-sm transition-all border",
+                    role === 'coach' ? "bg-secondary text-bg-dark border-secondary" : "bg-bg-surface/50 border-black/10 dark:border-white/10 text-text-muted"
+                  )}
+                >
+                  Coach
+                </button>
+                <button 
+                  type="button"
+                  onClick={() => setRole('admin')}
+                  className={cn(
+                    "flex-1 py-3 rounded-xl font-bold text-sm transition-all border",
+                    role === 'admin' ? "bg-red-500 text-white border-red-500" : "bg-bg-surface/50 border-black/10 dark:border-white/10 text-text-muted"
+                  )}
+                >
+                  Admin
+                </button>
+              </>
             )}
           </div>
         </div>
@@ -1737,8 +2585,14 @@ const LoginScreen = ({ setToast, onLogin }: {
       setToast({ show: true, message: 'Por favor, introduce tu email', type: 'error' });
       return;
     }
-    setToast({ show: true, message: '✓ Email de recuperación enviado (Simulado)', type: 'success' });
-    setShowForgotModal(false);
+    try {
+      await sendPasswordResetEmail(auth, forgotEmail);
+      setToast({ show: true, message: '✓ Email de recuperación enviado', type: 'success' });
+      setShowForgotModal(false);
+    } catch (error: any) {
+      console.error("Reset Password Error:", error);
+      setToast({ show: true, message: 'Error al enviar el email de recuperación', type: 'error' });
+    }
   };
 
   const handleSubmit = async (e: FormEvent) => {
@@ -1749,7 +2603,7 @@ const LoginScreen = ({ setToast, onLogin }: {
     try {
       await onLogin(email, password);
     } catch (err: any) {
-      setError('Credenciales incorrectas o error de conexión.');
+      setError('Correo o contraseña incorrectos. Por favor, inténtalo de nuevo.');
     } finally {
       setLoading(false);
     }
@@ -3423,6 +4277,13 @@ const NutritionScreen = ({ isCoach, clientData }: { isCoach?: boolean; clientDat
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [expandedIngredientIdx, setExpandedIngredientIdx] = useState<number | null>(null);
 
+  // Use the latest diet PDF from clientData if available
+  const latestDietPdf = clientData?.diets && clientData.diets.length > 0 
+    ? clientData.diets[clientData.diets.length - 1].url 
+    : null;
+
+  const currentPdfUrl = latestDietPdf || pdfUrl;
+
   const days = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
   const weekDates = [22, 23, 24, 25, 26, 27, 28];
 
@@ -3826,9 +4687,9 @@ const NutritionScreen = ({ isCoach, clientData }: { isCoach?: boolean; clientDat
               <span className="text-sm font-bold">{isParsingPdf ? 'Procesando...' : 'Importar con IA (PDF/Imagen)'}</span>
               <input type="file" accept=".pdf,image/*" className="hidden" onChange={handlePdfUpload} disabled={isParsingPdf} />
             </label>
-            {pdfUrl && (
+            {currentPdfUrl && (
               <button 
-                onClick={() => window.open(pdfUrl)}
+                onClick={() => window.open(currentPdfUrl)}
                 className="flex items-center justify-center gap-2 bg-primary/10 border border-primary/20 rounded-xl px-4 text-primary font-bold hover:bg-primary/20 transition-all"
               >
                 <Eye className="size-5" /> Ver PDF
@@ -3844,9 +4705,9 @@ const NutritionScreen = ({ isCoach, clientData }: { isCoach?: boolean; clientDat
           </div>
         )}
 
-        {!isCoach && pdfUrl && (
+        {!isCoach && currentPdfUrl && (
           <button 
-            onClick={() => window.open(pdfUrl)}
+            onClick={() => window.open(currentPdfUrl)}
             className="w-full flex items-center justify-center gap-2 bg-primary/10 border border-primary/20 rounded-xl p-4 text-primary font-bold hover:bg-primary/20 transition-all"
           >
             <FileText className="size-5" /> Ver Plan Nutricional (PDF)
@@ -5227,6 +6088,7 @@ const ProfileScreen = ({
   const [showSettings, setShowSettings] = useState(false);
   const [assignedCoachId, setAssignedCoachId] = useState(clientData?.assignedCoachId || '');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showIntakeForm, setShowIntakeForm] = useState(false);
 
   const isCoach = userRole === 'admin' || userRole === 'coach';
   const isViewingClient = isCoach && clientData !== null && !clientData.id.startsWith('self_');
@@ -5456,6 +6318,31 @@ const ProfileScreen = ({
 
         {isViewingClient && (
           <div className="space-y-6 mb-8">
+            {(userRole === 'admin' || userRole === 'coach') && (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between px-1">
+                  <h3 className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Evaluación Inicial</h3>
+                </div>
+                <button 
+                  onClick={() => setShowIntakeForm(true)}
+                  className="w-full flex items-center justify-between p-4 glass-card rounded-xl group transition-all hover:border-primary/40"
+                >
+                  <div className="flex items-center gap-3">
+                    <FileDown className="size-5 text-primary" />
+                    <span className="font-semibold">Ficha de Nuevo Cliente</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {clientData?.intakeForm ? (
+                      <span className="text-[8px] bg-primary/20 text-primary px-2 py-0.5 rounded-full font-bold uppercase">Completada</span>
+                    ) : (
+                      <span className="text-[8px] bg-amber-500/20 text-amber-500 px-2 py-0.5 rounded-full font-bold uppercase">Pendiente</span>
+                    )}
+                    <ChevronRight className="size-5 text-text-muted" />
+                  </div>
+                </button>
+              </div>
+            )}
+
             <div className="space-y-4">
               <div className="flex items-center justify-between px-1">
                 <h3 className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Dietas (PDF)</h3>
@@ -5756,7 +6643,7 @@ const ProfileScreen = ({
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.9 }}
-              className="relative w-full max-w-sm glass-panel p-6 rounded-2xl border border-black/5 dark:border-white/10 shadow-2xl"
+              className="relative w-full max-sm glass-panel p-6 rounded-2xl border border-black/5 dark:border-white/10 shadow-2xl"
             >
               <div className="flex flex-col items-center text-center gap-4">
                 <div className="size-16 rounded-full bg-red-500/20 flex items-center justify-center">
@@ -5794,6 +6681,21 @@ const ProfileScreen = ({
           </div>
         )}
       </AnimatePresence>
+
+      <AnimatePresence>
+        {showIntakeForm && clientData && (
+          <IntakeFormModal 
+            isOpen={showIntakeForm}
+            onClose={() => setShowIntakeForm(false)}
+            client={clientData}
+            onSave={(data) => {
+              onUpdateClient(clientData.id, { intakeForm: data });
+              setShowIntakeForm(false);
+              setToast({ show: true, message: 'Ficha de cliente guardada', type: 'success' });
+            }}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 };
@@ -5821,7 +6723,8 @@ export default function App() {
   const [loggedInCoach, setLoggedInCoach] = useState<Coach | null>(null);
   const [coachesList, setCoachesList] = useState<Coach[]>([]);
   const [clientsList, setClientsList] = useState<Client[]>([]);
-  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [usersList, setUsersList] = useState<UserProfile[]>([]);
+  const [notifications, setNotifications] = useState<any[]>([]);
   const [toast, setToast] = useState<{ show: boolean; message: string; type: 'success' | 'error' }>({
     show: false,
     message: '',
@@ -5902,10 +6805,16 @@ export default function App() {
       }, (error) => handleFirestoreError(error, OperationType.LIST, 'notifications'));
     }
 
+    const usersUnsubscribe = onSnapshot(collection(db, 'users'), (snapshot) => {
+      const users = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as UserProfile));
+      setUsersList(users);
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'users'));
+
     return () => {
       coachesUnsubscribe();
       clientsUnsubscribe();
       notificationsUnsubscribe();
+      usersUnsubscribe();
     };
   }, [isAuthReady, userRole, currentUser]);
 
@@ -5927,6 +6836,40 @@ export default function App() {
     testConnection();
   }, []);
 
+  const handleBlockUser = async (uid: string, currentActive: boolean) => {
+    try {
+      const response = await fetch('/api/users/block', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ uid, disabled: currentActive })
+      });
+      
+      if (!response.ok) throw new Error('Error al bloquear usuario');
+      
+      await setDoc(doc(db, 'users', uid), { active: !currentActive }, { merge: true });
+      setToast({ show: true, message: currentActive ? 'Usuario bloqueado' : 'Usuario desbloqueado', type: 'success' });
+    } catch (error) {
+      console.error("Block User Error:", error);
+      setToast({ show: true, message: 'Error al cambiar estado del usuario', type: 'error' });
+    }
+  };
+
+  const handleDeleteUser = async (uid: string) => {
+    try {
+      const response = await fetch(`/api/users/${uid}`, {
+        method: 'DELETE'
+      });
+      
+      if (!response.ok) throw new Error('Error al eliminar usuario');
+      
+      // Delete from Firestore
+      await setDoc(doc(db, 'users', uid), { isDeleted: true, active: false }, { merge: true });
+      setToast({ show: true, message: 'Usuario eliminado correctamente', type: 'success' });
+    } catch (error) {
+      console.error("Delete User Error:", error);
+      setToast({ show: true, message: 'Error al eliminar usuario', type: 'error' });
+    }
+  };
   const handleLogin = async (email: string, pass: string) => {
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, pass);
@@ -5948,7 +6891,7 @@ export default function App() {
       setToast({ show: true, message: 'Bienvenido de nuevo', type: 'success' });
     } catch (error: any) {
       console.error("Login Error:", error);
-      setToast({ show: true, message: 'Error al iniciar sesión. Comprueba tus credenciales.', type: 'error' });
+      setToast({ show: true, message: 'Error al iniciar sesión. Correo o contraseña incorrectos.', type: 'error' });
     }
   };
 
@@ -5965,10 +6908,13 @@ export default function App() {
     }
   };
 
-  const handleRegister = async (email: string, pass: string, name: string, role: 'client' | 'coach', assignedCoachId?: string) => {
+  const handleRegister = async (email: string, pass: string, name: string, role: 'client' | 'coach' | 'admin', assignedCoachId?: string) => {
     try {
-      // 1. Create user in Firebase Auth
-      const userCredential = await createUserWithEmailAndPassword(auth, email, pass);
+      // 1. Create user in Firebase Auth using a secondary app instance to avoid logging out the current admin/coach
+      const secondaryApp = initializeApp(firebaseConfig, `SecondaryApp_${Date.now()}`);
+      const secondaryAuth = getAuth(secondaryApp);
+      
+      const userCredential = await createUserWithEmailAndPassword(secondaryAuth, email, pass);
       const user = userCredential.user;
       
       // 2. Create user document in Firestore
@@ -5997,18 +6943,18 @@ export default function App() {
           enabledSections: defaultSections
         };
         await setDoc(doc(db, 'clients', user.uid), newClient);
-      } else if (role === 'coach') {
+      } else if (role === 'coach' || role === 'admin') {
         const newCoach: Coach = {
           id: user.uid,
           name: name,
-          role: 'coach',
+          role: role,
           img: `https://picsum.photos/seed/${user.uid}/100/100`,
           phone: '+34 600 000 000',
           email: email
         };
         await setDoc(doc(db, 'coaches', user.uid), newCoach);
         
-        // Create self-client for coach
+        // Create self-client for coach/admin
         const selfClientId = `self_${user.uid}`;
         const selfClient: Client = {
           id: selfClientId,
@@ -6023,11 +6969,15 @@ export default function App() {
         await setDoc(doc(db, 'clients', selfClientId), selfClient);
       }
 
-      setToast({ show: true, message: `Cuenta de ${role} creada correctamente`, type: 'success' });
-      // Don't change screen, let the auth listener handle it or stay in dashboard if admin/coach created it
+      // 4. Clean up secondary app
+      await deleteApp(secondaryApp);
+
+      const roleLabel = role === 'client' ? 'cliente' : role === 'coach' ? 'entrenador' : 'administrador';
+      setToast({ show: true, message: `✓ Nuevo ${roleLabel} creado correctamente`, type: 'success' });
+      setScreen('dashboard');
     } catch (error: any) {
       console.error("Registration Error:", error);
-      setToast({ show: true, message: "Error al crear la cuenta", type: 'error' });
+      setToast({ show: true, message: 'Error al crear usuario: ' + error.message, type: 'error' });
     }
   };
 
@@ -6209,6 +7159,14 @@ export default function App() {
                 onLogin={handleLogin}
               />
             )}
+            {screen === 'user_management' && (
+              <UserManagementScreen 
+                users={usersList}
+                onBack={() => setScreen('dashboard')}
+                onBlockUser={handleBlockUser}
+                onDeleteUser={handleDeleteUser}
+              />
+            )}
             {screen === 'home' && <HomeScreen isCoach={isCoachViewing} clientData={currentClient} coaches={coachesList} />}
             {screen === 'dashboard' && (
               <DashboardScreen 
@@ -6220,6 +7178,7 @@ export default function App() {
                 onMarkNotificationRead={(id) => setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n))}
                 onUpdateClient={handleUpdateClient}
                 userRole={userRole}
+                setScreen={setScreen}
               />
             )}
             {screen === 'workout' && (

@@ -1,20 +1,20 @@
 {
-  "name": "Elite Training App",
-  "short_name": "EliteFit",
+  "name": "BeFit PRO",
+  "short_name": "BeFit PRO",
   "description": "Plataforma de entrenamiento personalizado para atletas y coaches.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#050505",
-  "theme_color": "#00FF00",
+  "theme_color": "#050505",
   "icons": [
     {
-      "src": "https://picsum.photos/seed/fitness/192/192",
+      "src": "/logo.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "https://picsum.photos/seed/fitness/512/512",
+      "src": "/logo.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"

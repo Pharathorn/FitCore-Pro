@@ -27,6 +27,9 @@ async function startServer() {
         const adminEmails = ["admin@admin.com", "alvarowowplayer@gmail.com"];
         const adminPassword = "admin123";
         
+        // Use the specific database ID from config
+        const db = admin.firestore(config.firestoreDatabaseId);
+        
         for (const adminEmail of adminEmails) {
           try {
             let uid: string;
@@ -53,9 +56,6 @@ async function startServer() {
               }
             }
 
-            // Ensure Firestore record exists regardless of whether Auth user was just created or already existed
-            const db = admin.firestore();
-            
             // 1. Ensure User record
             await db.collection('users').doc(uid).set({
               email: adminEmail,
@@ -151,7 +151,8 @@ async function startServer() {
           }
         }
 
-        const db = admin.firestore();
+        const config = JSON.parse(fs.readFileSync(path.join(process.cwd(), "firebase-applet-config.json"), "utf-8"));
+        const db = admin.firestore(config.firestoreDatabaseId);
         await db.collection('users').doc(uid).set({
           email: adminEmail,
           name: adminEmail === "admin@admin.com" ? "Administrador" : "Álvaro Ruíz",

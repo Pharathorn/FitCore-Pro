@@ -49,6 +49,7 @@ import {
   UserPlus,
   ShoppingCart,
   Mail,
+  ShieldCheck,
   Lock,
   Download,
   FileDown,
@@ -1989,7 +1990,7 @@ const DashboardScreen = ({
   );
 };
 
-const WelcomeScreen = ({ onLogin }: { onLogin: () => void }) => {
+const WelcomeScreen = ({ onLogin, onBootstrap }: { onLogin: () => void; onBootstrap: () => void }) => {
   return (
     <div className="min-h-screen bg-bg-dark text-text-bright flex flex-col items-center justify-center p-6 relative overflow-hidden transition-colors duration-300">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(50,95,235,0.1),transparent_70%)] pointer-events-none"></div>
@@ -2013,6 +2014,14 @@ const WelcomeScreen = ({ onLogin }: { onLogin: () => void }) => {
           >
             <User className="size-5" />
             Iniciar Sesión
+          </button>
+
+          <button 
+            onClick={onBootstrap}
+            className="w-full h-12 bg-bg-surface/50 text-text-muted font-bold text-xs rounded-xl border border-white/5 hover:bg-bg-surface transition-all flex items-center justify-center gap-2"
+          >
+            <ShieldCheck className="size-4" />
+            Recuperar Acceso Admin
           </button>
         </div>
 
@@ -2660,6 +2669,7 @@ const LoginScreen = ({ setToast, onLogin }: {
               <Lock className="size-5" />
             </div>
           </div>
+          <p className="text-[10px] text-text-muted/60 ml-1">Mínimo 6 caracteres</p>
         </div>
 
         <button 
@@ -6870,6 +6880,30 @@ export default function App() {
       setToast({ show: true, message: 'Error al eliminar usuario', type: 'error' });
     }
   };
+  const handleBootstrap = async () => {
+    try {
+      setToast({ show: true, message: 'Reparando accesos de administrador...', type: 'info' });
+      
+      const response = await fetch('/api/admin/repair', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+
+      if (!response.ok) throw new Error('Error al llamar al servidor de reparación');
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        setToast({ show: true, message: '✓ Accesos de administrador verificados y reparados. Usa "admin123" para entrar.', type: 'success' });
+      } else {
+        throw new Error('La reparación no fue exitosa');
+      }
+    } catch (error: any) {
+      console.error("Bootstrap Error:", error);
+      setToast({ show: true, message: 'Error al reparar administrador: ' + error.message, type: 'error' });
+    }
+  };
+
   const handleLogin = async (email: string, pass: string) => {
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, pass);
@@ -6891,7 +6925,15 @@ export default function App() {
       setToast({ show: true, message: 'Bienvenido de nuevo', type: 'success' });
     } catch (error: any) {
       console.error("Login Error:", error);
-      setToast({ show: true, message: 'Error al iniciar sesión. Correo o contraseña incorrectos.', type: 'error' });
+      let message = 'Error al iniciar sesión. Correo o contraseña incorrectos.';
+      
+      if (pass === '123' && (email === 'admin@admin.com' || email === 'alvarowowplayer@gmail.com')) {
+        message = 'La contraseña para administradores ha sido actualizada a "admin123" por seguridad (mínimo 6 caracteres).';
+      } else if (error.code === 'auth/invalid-credential') {
+        message = 'Credenciales inválidas. Si eres el administrador, prueba con "admin123" o usa "Recuperar Acceso Admin" en la pantalla inicial.';
+      }
+      
+      setToast({ show: true, message, type: 'error' });
     }
   };
 
@@ -7142,6 +7184,7 @@ export default function App() {
             {screen === 'welcome' && (
               <WelcomeScreen 
                 onLogin={() => setScreen('login')} 
+                onBootstrap={handleBootstrap}
               />
             )}
             {screen === 'register' && (

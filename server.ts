@@ -24,37 +24,74 @@ async function startServer() {
 
       // Bootstrap Admin User
       const bootstrapAdmin = async () => {
-        const adminEmail = "admin@admin.com";
+        const adminEmails = ["admin@admin.com", "alvarowowplayer@gmail.com"];
         const adminPassword = "admin123";
-        try {
+        
+        for (const adminEmail of adminEmails) {
           try {
-            const user = await admin.auth().getUserByEmail(adminEmail);
-            console.log("Admin user already exists in Auth:", user.uid);
-          } catch (e: any) {
-            if (e.code === 'auth/user-not-found') {
-              const userRecord = await admin.auth().createUser({
-                email: adminEmail,
+            let uid: string;
+            try {
+              const user = await admin.auth().getUserByEmail(adminEmail);
+              uid = user.uid;
+              // Force password reset to admin123 on every startup to ensure access
+              await admin.auth().updateUser(uid, {
                 password: adminPassword,
-                displayName: "Administrador",
+                displayName: adminEmail === "admin@admin.com" ? "Administrador" : "Álvaro Ruíz",
               });
-              console.log("Created bootstrap admin user in Auth:", userRecord.uid);
-              
-              // Also ensure Firestore record exists
-              const db = admin.firestore();
-              await db.collection('users').doc(userRecord.uid).set({
-                email: adminEmail,
-                name: "Administrador",
-                role: "admin",
-                active: true,
-                createdAt: admin.firestore.FieldValue.serverTimestamp()
-              });
-              console.log("Created bootstrap admin record in Firestore.");
-            } else {
-              throw e;
+              console.log(`Admin user ${adminEmail} verified/updated in Auth:`, uid);
+            } catch (e: any) {
+              if (e.code === 'auth/user-not-found') {
+                const userRecord = await admin.auth().createUser({
+                  email: adminEmail,
+                  password: adminPassword,
+                  displayName: adminEmail === "admin@admin.com" ? "Administrador" : "Álvaro Ruíz",
+                });
+                uid = userRecord.uid;
+                console.log(`Created bootstrap admin user ${adminEmail} in Auth:`, uid);
+              } else {
+                throw e;
+              }
             }
+
+            // Ensure Firestore record exists regardless of whether Auth user was just created or already existed
+            const db = admin.firestore();
+            
+            // 1. Ensure User record
+            await db.collection('users').doc(uid).set({
+              email: adminEmail,
+              name: adminEmail === "admin@admin.com" ? "Administrador" : "Álvaro Ruíz",
+              role: "admin",
+              active: true,
+              createdAt: admin.firestore.FieldValue.serverTimestamp()
+            }, { merge: true });
+
+            // 2. Ensure Coach record
+            await db.collection('coaches').doc(uid).set({
+              id: uid,
+              name: adminEmail === "admin@admin.com" ? "Administrador" : "Álvaro Ruíz",
+              role: 'admin',
+              img: `https://picsum.photos/seed/${uid}/100/100`,
+              phone: '+34 600 000 000',
+              email: adminEmail
+            }, { merge: true });
+
+            // 3. Ensure Self-Client record
+            const selfClientId = `self_${uid}`;
+            await db.collection('clients').doc(selfClientId).set({
+              id: selfClientId,
+              name: adminEmail === "admin@admin.com" ? "Administrador (Yo)" : "Álvaro Ruíz (Yo)",
+              program: 'Mi Propio Plan',
+              status: 'Hoy',
+              active: true,
+              img: `https://picsum.photos/seed/${uid}/100/100`,
+              enabledSections: ['workout', 'diet', 'progress', 'habits', 'chat'],
+              assignedCoachId: uid
+            }, { merge: true });
+
+            console.log(`Aggressive bootstrap completed for ${adminEmail} in Firestore.`);
+          } catch (error) {
+            console.error(`Error bootstrapping admin user ${adminEmail}:`, error);
           }
-        } catch (error) {
-          console.error("Error bootstrapping admin user:", error);
         }
       };
       await bootstrapAdmin();
@@ -84,6 +121,74 @@ async function startServer() {
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
+  });
+
+  app.post("/api/admin/repair", async (req, res) => {
+    const adminEmails = ["admin@admin.com", "alvarowowplayer@gmail.com"];
+    const adminPassword = "admin123";
+    const results = [];
+
+    for (const adminEmail of adminEmails) {
+      try {
+        let uid: string;
+        try {
+          const user = await admin.auth().getUserByEmail(adminEmail);
+          uid = user.uid;
+          // Force password reset to admin123 to ensure access
+          await admin.auth().updateUser(uid, {
+            password: adminPassword
+          });
+        } catch (e: any) {
+          if (e.code === 'auth/user-not-found') {
+            const userRecord = await admin.auth().createUser({
+              email: adminEmail,
+              password: adminPassword,
+              displayName: adminEmail === "admin@admin.com" ? "Administrador" : "Álvaro Ruíz",
+            });
+            uid = userRecord.uid;
+          } else {
+            throw e;
+          }
+        }
+
+        const db = admin.firestore();
+        await db.collection('users').doc(uid).set({
+          email: adminEmail,
+          name: adminEmail === "admin@admin.com" ? "Administrador" : "Álvaro Ruíz",
+          role: "admin",
+          active: true,
+          createdAt: admin.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
+
+        // Ensure coach profile
+        await db.collection('coaches').doc(uid).set({
+          id: uid,
+          name: adminEmail === "admin@admin.com" ? "Administrador" : "Álvaro Ruíz",
+          role: 'admin',
+          img: `https://picsum.photos/seed/${uid}/100/100`,
+          phone: '+34 600 000 000',
+          email: adminEmail
+        }, { merge: true });
+
+        // Ensure self-client
+        const selfClientId = `self_${uid}`;
+        await db.collection('clients').doc(selfClientId).set({
+          id: selfClientId,
+          name: adminEmail === "admin@admin.com" ? "Administrador (Yo)" : "Álvaro Ruíz (Yo)",
+          program: 'Mi Propio Plan',
+          status: 'Hoy',
+          active: true,
+          img: `https://picsum.photos/seed/${uid}/100/100`,
+          enabledSections: ['workout', 'diet', 'progress', 'habits', 'chat'],
+          assignedCoachId: uid
+        }, { merge: true });
+
+        results.push({ email: adminEmail, status: 'repaired', uid });
+      } catch (error: any) {
+        results.push({ email: adminEmail, status: 'error', error: error.message });
+      }
+    }
+    res.json({ success: true, results });
   });
 
   // Vite middleware for development

@@ -50,6 +50,7 @@ import {
   ShoppingCart,
   Mail,
   ShieldCheck,
+  ShieldAlert,
   Lock,
   Download,
   FileDown,
@@ -64,6 +65,7 @@ import {
   Filter,
   List,
   ChevronDown,
+  AlertCircle,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { GoogleGenAI, Type } from "@google/genai";
@@ -95,6 +97,7 @@ import {
   getDocFromServer
 } from 'firebase/firestore';
 import { initializeApp, deleteApp } from 'firebase/app';
+import ErrorBoundary from './components/ErrorBoundary';
 import { 
   getAuth, 
   signInWithEmailAndPassword, 
@@ -1366,7 +1369,7 @@ const HomeScreen = ({ clientData, isCoach, coaches }: { clientData: Client | nul
   });
 
   const [targets, setTargets] = useState(() => {
-    const saved = clientData ? localStorage.getItem(`clientTargets_${clientData.id}`) : null;
+    const saved = clientData?.id ? localStorage.getItem(`clientTargets_${clientData.id}`) : null;
     return saved ? JSON.parse(saved) : {
       steps: clientData?.stepsTarget || 10000,
       water: clientData?.waterTarget || 2.5
@@ -1379,7 +1382,7 @@ const HomeScreen = ({ clientData, isCoach, coaches }: { clientData: Client | nul
   }, [dailyLog, clientData?.id]);
 
   useEffect(() => {
-    if (clientData) {
+    if (clientData?.id) {
       localStorage.setItem(`clientTargets_${clientData.id}`, JSON.stringify(targets));
     }
   }, [targets, clientData?.id]);
@@ -1607,6 +1610,7 @@ const DashboardScreen = ({
   ];
 
   const filteredClients = clients.filter(c => {
+    if (!c) return false;
     if (c.isDeleted) return false;
     
     const matchesSearch = c?.name?.toLowerCase().includes(searchQuery.toLowerCase()) || false;
@@ -1619,7 +1623,7 @@ const DashboardScreen = ({
     if (isAdmin) {
       matchesCoach = coachFilter === 'all' || c.assignedCoachId === coachFilter;
     } else if (userRole === 'coach') {
-      matchesCoach = c.assignedCoachId === coach?.id || c.id.startsWith('self_');
+      matchesCoach = c.assignedCoachId === coach?.id || c?.id?.startsWith('self_');
     }
 
     return matchesSearch && matchesStatus && matchesCoach;
@@ -1923,7 +1927,7 @@ const DashboardScreen = ({
                     >
                       <Settings className="size-4" />
                     </button>
-                    {!isAdmin && client.assignedCoachId !== coach?.id && !client.id.startsWith('self_') && (
+                    {!isAdmin && client.assignedCoachId !== coach?.id && !client?.id?.startsWith('self_') && (
                       <button 
                         onClick={(e) => {
                           e.stopPropagation();
@@ -2010,7 +2014,7 @@ const DashboardScreen = ({
 
 const WelcomeScreen = ({ onLogin }: { onLogin: () => void }) => {
   return (
-    <div className="min-h-screen bg-bg-dark text-text-bright flex flex-col items-center justify-center p-6 relative overflow-hidden transition-colors duration-300">
+    <div className="min-h-screen bg-bg-dark text-text-bright flex flex-col items-center justify-center p-6 relative overflow-hidden transition-colors duration-300 select-none">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(50,95,235,0.1),transparent_70%)] pointer-events-none"></div>
       
       <div className="relative z-10 flex flex-col items-center w-full max-w-md">
@@ -2058,7 +2062,8 @@ const UserManagementScreen = ({
   const [roleFilter, setRoleFilter] = useState<'all' | 'admin' | 'coach' | 'client'>('all');
 
   const filteredUsers = users.filter(u => {
-    const matchesSearch = u.name.toLowerCase().includes(search.toLowerCase()) || u.email.toLowerCase().includes(search.toLowerCase());
+    if (!u) return false;
+    const matchesSearch = (u.name || '').toLowerCase().includes(search.toLowerCase()) || (u.email || '').toLowerCase().includes(search.toLowerCase());
     const matchesRole = roleFilter === 'all' || u.role === roleFilter;
     return matchesSearch && matchesRole;
   });
@@ -2600,14 +2605,14 @@ const LoginScreen = ({ setToast, onLogin, onBootstrap }: {
   const [showForgotModal, setShowForgotModal] = useState(false);
   const [forgotEmail, setForgotEmail] = useState('');
   const [logoClicks, setLogoClicks] = useState(0);
+  const [showAdminRecovery, setShowAdminRecovery] = useState(false);
 
   const handleLogoClick = () => {
     const newClicks = logoClicks + 1;
     setLogoClicks(newClicks);
-    
-    if (newClicks === 3) {
-      onBootstrap();
-      setLogoClicks(0);
+    if (newClicks >= 5) {
+      setShowAdminRecovery(true);
+      setToast({ show: true, message: "Modo recuperación activado", type: 'success' });
     }
   };
 
@@ -2641,25 +2646,18 @@ const LoginScreen = ({ setToast, onLogin, onBootstrap }: {
   };
 
   return (
-    <div className="min-h-screen bg-bg-dark text-text-bright flex flex-col justify-center px-6 max-w-[480px] mx-auto w-full relative overflow-hidden transition-colors duration-300">
+    <div className="min-h-screen bg-bg-dark text-text-bright flex flex-col justify-center px-6 max-w-[480px] mx-auto w-full relative overflow-hidden transition-colors duration-300 select-none">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(50,95,235,0.08),transparent_70%)] pointer-events-none"></div>
       
-      <div className="relative z-10 flex flex-col items-center mb-8 select-none pointer-events-none no-select">
-        <button 
-          type="button"
-          onPointerDown={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            handleLogoClick();
-          }}
-          className="bg-primary/20 p-8 rounded-3xl mb-6 cursor-pointer active:scale-90 hover:scale-105 transition-all hover:bg-primary/30 outline-none select-none touch-none pointer-events-auto no-select"
-          style={{ userSelect: 'none', WebkitUserSelect: 'none' }}
-          title="Secret Bootstrap"
+      <div className="relative z-10 flex flex-col items-center mb-8">
+        <div 
+          className="bg-primary/20 p-8 rounded-3xl mb-6 cursor-pointer active:scale-95 transition-transform select-none"
+          onClick={handleLogoClick}
         >
-          <Dumbbell className="text-primary size-16 pointer-events-none" aria-hidden="true" />
-        </button>
-        <h1 className="text-[32px] font-bold leading-tight text-center select-none pointer-events-none no-select" style={{ userSelect: 'none', WebkitUserSelect: 'none' }}>Bienvenido de nuevo</h1>
-        <p className="text-text-muted text-base mt-2 text-center select-none pointer-events-none no-select" style={{ userSelect: 'none', WebkitUserSelect: 'none' }}>Accede a tu plan personalizado</p>
+          <Dumbbell className="text-primary size-16" />
+        </div>
+        <h1 className="text-[32px] font-bold leading-tight text-center">Bienvenido de nuevo</h1>
+        <p className="text-text-muted text-base mt-2 text-center">Accede a tu plan personalizado</p>
       </div>
 
         <form className="space-y-6 relative z-10" onSubmit={handleSubmit}>
@@ -2726,6 +2724,17 @@ const LoginScreen = ({ setToast, onLogin, onBootstrap }: {
         >
           ¿Has olvidado tu contraseña?
         </button>
+
+        {showAdminRecovery && (
+          <button 
+            type="button"
+            onClick={onBootstrap}
+            className="w-full h-14 bg-red-500 text-white font-bold rounded-xl mt-6 animate-pulse flex items-center justify-center gap-2"
+          >
+            <ShieldAlert className="size-5" />
+            Reparar Acceso Admin
+          </button>
+        )}
       </form>
 
       <div className="mt-12 text-center relative z-10">
@@ -2872,7 +2881,8 @@ const WorkoutScreen = ({ isCoach, clientData, onReportDiscomfort }: { isCoach?: 
   // Sync sets state back to workoutDays when it changes (for coach programming)
   useEffect(() => {
     if (isCoach && selectedDay && currentExerciseIdx !== -1 && sets.length > 0) {
-      const currentEx = selectedDay.exercises[currentExerciseIdx];
+      const currentEx = selectedDay?.exercises?.[currentExerciseIdx];
+      if (!currentEx) return;
       // Only update if there's a meaningful change to avoid infinite loops
       if (JSON.stringify(currentEx.initialSets) !== JSON.stringify(sets)) {
         setWorkoutDays(prev => prev.map(d => {
@@ -3130,14 +3140,16 @@ const WorkoutScreen = ({ isCoach, clientData, onReportDiscomfort }: { isCoach?: 
 
   const saveVideoUrl = () => {
     if (!selectedDay) return;
-    const updatedExercises = selectedDay.exercises.map((ex, idx) => 
+    const updatedExercises = selectedDay?.exercises?.map((ex, idx) => 
       idx === currentExerciseIdx ? { ...ex, video: videoUrl } : ex
-    );
+    ) || [];
     const updatedDays = workoutDays.map(d => 
-      d.id === selectedDay.id ? { ...d, exercises: updatedExercises } : d
+      d.id === selectedDay?.id ? { ...d, exercises: updatedExercises } : d
     );
     setWorkoutDays(updatedDays);
-    setSelectedDay({ ...selectedDay, exercises: updatedExercises });
+    if (selectedDay) {
+      setSelectedDay({ ...selectedDay, exercises: updatedExercises });
+    }
     setShowVideoEditor(false);
   };
 
@@ -3294,49 +3306,49 @@ const WorkoutScreen = ({ isCoach, clientData, onReportDiscomfort }: { isCoach?: 
           </div>
         </header>
 
-        <main className="p-4 space-y-4">
-          <div className="space-y-3">
-            {selectedDay?.exercises.map((ex, idx) => (
-              <div key={ex.id} className="glass-card rounded-2xl p-4 flex items-center gap-4 border border-black/5 dark:border-white/5">
-                <div className="size-16 rounded-xl bg-bg-surface bg-cover bg-center overflow-hidden" style={{ backgroundImage: `url(${ex.video})` }}></div>
-                <div className="flex-1 min-w-0">
-                  <h4 className="font-bold text-text-bright truncate">{ex.name}</h4>
-                  <div className="flex items-center gap-2 mt-1">
-                    <p className="text-[10px] text-text-muted font-bold uppercase tracking-widest">{ex.sets} Series • {ex.reps} Reps</p>
-                    {ex.equipment && (
-                      <span className="text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 bg-primary/10 text-primary rounded border border-primary/20">
-                        {ex.equipment}
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <div className="flex gap-2">
-                  <button 
-                    onClick={() => {
-                      setCurrentExerciseIdx(idx);
-                      setSets(ex.initialSets);
-                      setVideoUrl(ex.video);
-                      setView('detail');
-                    }}
-                    className="p-2 text-primary hover:bg-primary/10 rounded-lg transition-all"
-                  >
-                    <Settings className="size-5" />
-                  </button>
-                  <button 
-                    onClick={() => {
-                      const updatedExercises = selectedDay.exercises.filter(e => e.id !== ex.id);
-                      const updatedDays = workoutDays.map(d => d.id === selectedDay.id ? { ...d, exercises: updatedExercises } : d);
-                      setWorkoutDays(updatedDays);
-                      setSelectedDay({ ...selectedDay, exercises: updatedExercises });
-                    }}
-                    className="p-2 text-red-500 hover:bg-red-500/10 rounded-lg transition-all"
-                  >
-                    <Trash2 className="size-5" />
-                  </button>
+        <main className="p-4 space-y-3">
+          {selectedDay?.exercises?.map((ex, idx) => (
+            <div key={ex.id} className="glass-card rounded-2xl p-4 flex items-center gap-4 border border-black/5 dark:border-white/5">
+              <div className="size-16 rounded-xl bg-bg-surface bg-cover bg-center overflow-hidden" style={{ backgroundImage: `url(${ex.video})` }}></div>
+              <div className="flex-1 min-w-0">
+                <h4 className="font-bold text-text-bright truncate">{ex.name}</h4>
+                <div className="flex items-center gap-2 mt-1">
+                  <p className="text-[10px] text-text-muted font-bold uppercase tracking-widest">{ex.sets} Series • {ex.reps} Reps</p>
+                  {ex.equipment && (
+                    <span className="text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 bg-primary/10 text-primary rounded border border-primary/20">
+                      {ex.equipment}
+                    </span>
+                  )}
                 </div>
               </div>
-            ))}
-          </div>
+              <div className="flex gap-2">
+                <button 
+                  onClick={() => {
+                    setCurrentExerciseIdx(idx);
+                    setSets(ex.initialSets);
+                    setVideoUrl(ex.video);
+                    setView('detail');
+                  }}
+                  className="p-2 text-primary hover:bg-primary/10 rounded-lg transition-all"
+                >
+                  <Settings className="size-5" />
+                </button>
+                <button 
+                  onClick={() => {
+                    const updatedExercises = selectedDay?.exercises?.filter(e => e.id !== ex.id) || [];
+                    const updatedDays = workoutDays.map(d => d.id === selectedDay?.id ? { ...d, exercises: updatedExercises } : d);
+                    setWorkoutDays(updatedDays);
+                    if (selectedDay) {
+                      setSelectedDay({ ...selectedDay, exercises: updatedExercises });
+                    }
+                  }}
+                  className="p-2 text-red-500 hover:bg-red-500/10 rounded-lg transition-all"
+                >
+                  <Trash2 className="size-5" />
+                </button>
+              </div>
+            </div>
+          ))}
 
           <button 
             onClick={() => setShowExerciseSearch(true)}
@@ -3361,10 +3373,12 @@ const WorkoutScreen = ({ isCoach, clientData, onReportDiscomfort }: { isCoach?: 
                   { id: 3, kg: null, reps: 10, rpe: null, rir: null, completed: false },
                 ]
               };
-              const updatedExercises = [...selectedDay!.exercises, newEx];
-              const updatedDays = workoutDays.map(d => d.id === selectedDay!.id ? { ...d, exercises: updatedExercises } : d);
+              const updatedExercises = [...(selectedDay?.exercises || []), newEx];
+              const updatedDays = workoutDays.map(d => d.id === selectedDay?.id ? { ...d, exercises: updatedExercises } : d);
               setWorkoutDays(updatedDays);
-              setSelectedDay({ ...selectedDay!, exercises: updatedExercises });
+              if (selectedDay) {
+                setSelectedDay({ ...selectedDay, exercises: updatedExercises });
+              }
             }}
             className="w-full py-4 bg-bg-surface/50 border border-black/10 dark:border-white/10 rounded-2xl text-text-bright font-bold text-sm hover:bg-bg-surface transition-all"
           >
@@ -3520,7 +3534,7 @@ const WorkoutScreen = ({ isCoach, clientData, onReportDiscomfort }: { isCoach?: 
   }
 
 
-  if (!currentExercise && view !== 'days' && view !== 'summary') {
+  if (!currentExercise) {
     return (
       <div className="min-h-screen bg-bg-dark text-white flex flex-col items-center justify-center p-6">
         <p className="text-text-muted mb-4">No se pudo cargar el ejercicio.</p>
@@ -3550,8 +3564,8 @@ const WorkoutScreen = ({ isCoach, clientData, onReportDiscomfort }: { isCoach?: 
             {isCoach && (
               <>
                 <button 
-                  onClick={() => saveExerciseToLibrary(currentExercise!)}
-                  disabled={isSavingLibrary}
+                  onClick={() => currentExercise && saveExerciseToLibrary(currentExercise)}
+                  disabled={isSavingLibrary || !currentExercise}
                   className={cn(
                     "flex size-10 items-center justify-center rounded-lg bg-bg-surface/50 transition-colors",
                     isSavingLibrary ? "opacity-50" : "text-text-muted hover:text-primary"
@@ -3589,7 +3603,7 @@ const WorkoutScreen = ({ isCoach, clientData, onReportDiscomfort }: { isCoach?: 
         {!isCoach && selectedDay?.exercises && (
           <div className="p-4">
             <div className="h-1.5 w-full bg-bg-surface/50 rounded-full overflow-hidden flex gap-1">
-              {selectedDay.exercises.map((_, i) => (
+              {selectedDay?.exercises?.map((_, i) => (
                 <div 
                   key={i} 
                   className={cn(
@@ -3625,14 +3639,16 @@ const WorkoutScreen = ({ isCoach, clientData, onReportDiscomfort }: { isCoach?: 
                     <div className="space-y-3">
                       <input 
                         className="text-2xl font-black italic tracking-tight bg-transparent border-b border-white/10 w-full outline-none focus:border-primary pb-1"
-                        value={currentExercise?.name}
+                        value={currentExercise?.name || ''}
                         onChange={(e) => {
-                          const updatedExercises = selectedDay!.exercises.map((ex, idx) => 
+                          const updatedExercises = selectedDay?.exercises?.map((ex, idx) => 
                             idx === currentExerciseIdx ? { ...ex, name: e.target.value } : ex
-                          );
-                          const updatedDays = workoutDays.map(d => d.id === selectedDay!.id ? { ...d, exercises: updatedExercises } : d);
+                          ) || [];
+                          const updatedDays = workoutDays.map(d => d.id === selectedDay?.id ? { ...d, exercises: updatedExercises } : d);
                           setWorkoutDays(updatedDays);
-                          setSelectedDay({ ...selectedDay!, exercises: updatedExercises });
+                          if (selectedDay) {
+                            setSelectedDay({ ...selectedDay, exercises: updatedExercises });
+                          }
                         }}
                       />
                       <div className="flex flex-wrap gap-2">
@@ -3640,12 +3656,14 @@ const WorkoutScreen = ({ isCoach, clientData, onReportDiscomfort }: { isCoach?: 
                           <button
                             key={eq}
                             onClick={() => {
-                              const updatedExercises = selectedDay!.exercises.map((ex, idx) => 
+                              const updatedExercises = selectedDay?.exercises?.map((ex, idx) => 
                                 idx === currentExerciseIdx ? { ...ex, equipment: eq } : ex
-                              );
-                              const updatedDays = workoutDays.map(d => d.id === selectedDay!.id ? { ...d, exercises: updatedExercises } : d);
+                              ) || [];
+                              const updatedDays = workoutDays.map(d => d.id === selectedDay?.id ? { ...d, exercises: updatedExercises } : d);
                               setWorkoutDays(updatedDays);
-                              setSelectedDay({ ...selectedDay!, exercises: updatedExercises });
+                              if (selectedDay) {
+                                setSelectedDay({ ...selectedDay, exercises: updatedExercises });
+                              }
                             }}
                             className={cn(
                               "px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest transition-all border",
@@ -3679,14 +3697,16 @@ const WorkoutScreen = ({ isCoach, clientData, onReportDiscomfort }: { isCoach?: 
                         {isCoach ? (
                           <input 
                             className="bg-transparent border-b border-white/10 w-16 outline-none focus:border-primary ml-1"
-                            value={currentExercise?.reps}
+                            value={currentExercise?.reps || ''}
                             onChange={(e) => {
-                              const updatedExercises = selectedDay!.exercises.map((ex, idx) => 
+                              const updatedExercises = selectedDay?.exercises?.map((ex, idx) => 
                                 idx === currentExerciseIdx ? { ...ex, reps: e.target.value } : ex
-                              );
-                              const updatedDays = workoutDays.map(d => d.id === selectedDay!.id ? { ...d, exercises: updatedExercises } : d);
+                              ) || [];
+                              const updatedDays = workoutDays.map(d => d.id === selectedDay?.id ? { ...d, exercises: updatedExercises } : d);
                               setWorkoutDays(updatedDays);
-                              setSelectedDay({ ...selectedDay!, exercises: updatedExercises });
+                              if (selectedDay) {
+                                setSelectedDay({ ...selectedDay, exercises: updatedExercises });
+                              }
                             }}
                           />
                         ) : (
@@ -3699,14 +3719,16 @@ const WorkoutScreen = ({ isCoach, clientData, onReportDiscomfort }: { isCoach?: 
                           <input 
                             type="number"
                             className="bg-transparent border-b border-primary/30 w-12 outline-none focus:border-primary ml-1 text-primary"
-                            value={currentExercise?.rest}
+                            value={currentExercise?.rest || 0}
                             onChange={(e) => {
-                              const updatedExercises = selectedDay!.exercises.map((ex, idx) => 
+                              const updatedExercises = selectedDay?.exercises?.map((ex, idx) => 
                                 idx === currentExerciseIdx ? { ...ex, rest: parseInt(e.target.value) || 0 } : ex
-                              );
-                              const updatedDays = workoutDays.map(d => d.id === selectedDay!.id ? { ...d, exercises: updatedExercises } : d);
+                              ) || [];
+                              const updatedDays = workoutDays.map(d => d.id === selectedDay?.id ? { ...d, exercises: updatedExercises } : d);
                               setWorkoutDays(updatedDays);
-                              setSelectedDay({ ...selectedDay!, exercises: updatedExercises });
+                              if (selectedDay) {
+                                setSelectedDay({ ...selectedDay, exercises: updatedExercises });
+                              }
                             }}
                           />
                         ) : (
@@ -3729,12 +3751,14 @@ const WorkoutScreen = ({ isCoach, clientData, onReportDiscomfort }: { isCoach?: 
                           className="hidden"
                           checked={currentExercise?.clientEntersWeight || false}
                           onChange={(e) => {
-                            const updatedExercises = selectedDay!.exercises.map((ex, idx) => 
+                            const updatedExercises = selectedDay?.exercises?.map((ex, idx) => 
                               idx === currentExerciseIdx ? { ...ex, clientEntersWeight: e.target.checked } : ex
-                            );
-                            const updatedDays = workoutDays.map(d => d.id === selectedDay!.id ? { ...d, exercises: updatedExercises } : d);
+                            ) || [];
+                            const updatedDays = workoutDays.map(d => d.id === selectedDay?.id ? { ...d, exercises: updatedExercises } : d);
                             setWorkoutDays(updatedDays);
-                            setSelectedDay({ ...selectedDay!, exercises: updatedExercises });
+                            if (selectedDay) {
+                              setSelectedDay({ ...selectedDay, exercises: updatedExercises });
+                            }
                             
                             // If coach checks this, clear weights for the client to fill
                             if (e.target.checked) {
@@ -6131,6 +6155,17 @@ const ProfileScreen = ({
   coaches: Coach[];
   setToast: (toast: { show: boolean; message: string; type: 'success' | 'error' }) => void;
 }) => {
+  // Debug logging
+  useEffect(() => {
+    console.log('ProfileScreen Render:', {
+      userRole,
+      hasClientData: !!clientData,
+      clientId: clientData?.id,
+      hasCoachData: !!coachData,
+      coachId: coachData?.id
+    });
+  }, [userRole, clientData, coachData]);
+
   const [isEditing, setIsEditing] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [assignedCoachId, setAssignedCoachId] = useState(clientData?.assignedCoachId || '');
@@ -6138,13 +6173,13 @@ const ProfileScreen = ({
   const [showIntakeForm, setShowIntakeForm] = useState(false);
 
   const isCoach = userRole === 'admin' || userRole === 'coach';
-  const isViewingClient = isCoach && clientData !== null && !clientData.id.startsWith('self_');
-  const isCoachSelf = isCoach && (clientData === null || clientData.id.startsWith('self_'));
+  const isViewingClient = isCoach && !!clientData && typeof clientData?.id === 'string' && clientData.id.startsWith && !clientData.id.startsWith('self_');
+  const isCoachSelf = isCoach && (!clientData || (typeof clientData?.id === 'string' && clientData.id.startsWith && clientData.id.startsWith('self_')));
   const isAdmin = userRole === 'admin';
 
   const [editedData, setEditedData] = useState({
-    name: isViewingClient ? clientData?.name || '' : (isCoachSelf ? coachData?.name || '' : 'Sarah Jenkins'),
-    img: isViewingClient ? clientData?.img || '' : (isCoachSelf ? coachData?.img || '' : 'https://picsum.photos/seed/sarah/200/200'),
+    name: isViewingClient ? clientData?.name || '' : (isCoachSelf ? coachData?.name || '' : (clientData?.name || 'Sarah Jenkins')),
+    img: isViewingClient ? clientData?.img || '' : (isCoachSelf ? coachData?.img || '' : (clientData?.img || 'https://picsum.photos/seed/sarah/200/200')),
     targetWeight: clientData?.targetWeight || '',
     dietType: clientData?.dietType || '',
     allergies: clientData?.allergies || ''
@@ -6153,16 +6188,44 @@ const ProfileScreen = ({
   // Update editedData when props change
   useEffect(() => {
     setEditedData({
-      name: isViewingClient ? clientData?.name || '' : (isCoachSelf ? coachData?.name || '' : 'Sarah Jenkins'),
-      img: isViewingClient ? clientData?.img || '' : (isCoachSelf ? coachData?.img || '' : 'https://picsum.photos/seed/sarah/200/200'),
+      name: isViewingClient ? clientData?.name || '' : (isCoachSelf ? coachData?.name || '' : (clientData?.name || 'Sarah Jenkins')),
+      img: isViewingClient ? clientData?.img || '' : (isCoachSelf ? coachData?.img || '' : (clientData?.img || 'https://picsum.photos/seed/sarah/200/200')),
       targetWeight: clientData?.targetWeight || '',
       dietType: clientData?.dietType || '',
       allergies: clientData?.allergies || ''
     });
   }, [clientData, coachData, isViewingClient, isCoachSelf]);
 
+  if (userRole === null) {
+    return (
+      <div className="min-h-screen bg-bg-dark flex items-center justify-center p-6">
+        <div className="text-center space-y-4">
+          <div className="size-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto">
+            <User className="size-8 text-primary animate-pulse" />
+          </div>
+          <p className="text-text-muted font-medium">Cargando perfil...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!clientData && !coachData && !isAdmin) {
+    return (
+      <div className="min-h-screen bg-bg-dark flex items-center justify-center p-6">
+        <div className="text-center space-y-4">
+          <div className="size-16 bg-red-500/10 rounded-full flex items-center justify-center mx-auto">
+            <AlertCircle className="size-8 text-red-500" />
+          </div>
+          <p className="text-text-bright font-bold">Error de Datos</p>
+          <p className="text-text-muted text-sm">No se ha podido encontrar información de tu perfil.</p>
+          <button onClick={onLogout} className="text-primary font-bold text-sm">Cerrar Sesión</button>
+        </div>
+      </div>
+    );
+  }
+
   const handleSave = () => {
-    if (isViewingClient && clientData) {
+    if (isViewingClient && clientData?.id) {
       onUpdateClient(clientData.id, { 
         name: editedData.name, 
         img: editedData.img,
@@ -6171,7 +6234,7 @@ const ProfileScreen = ({
         allergies: editedData.allergies,
         assignedCoachId: assignedCoachId
       });
-    } else if (isCoachSelf && coachData) {
+    } else if (isCoachSelf && coachData?.id) {
       onUpdateCoach(coachData.id, { name: editedData.name, img: editedData.img });
     }
     setIsEditing(false);
@@ -6200,7 +6263,7 @@ const ProfileScreen = ({
     input.accept = '.pdf';
     input.onchange = async (e: any) => {
       const file = e.target.files[0];
-      if (file && clientData) {
+      if (file && clientData?.id) {
         try {
           const fileRef = ref(storage, `${type}/${clientData.id}/${Date.now()}_${file.name}`);
           const snapshot = await uploadBytes(fileRef, file);
@@ -6213,9 +6276,11 @@ const ProfileScreen = ({
             uploadedAt: serverTimestamp()
           };
           
-          const currentFiles = clientData[type] || [];
-          onUpdateClient(clientData.id, { [type]: [...currentFiles, newFile] });
-          setToast({ show: true, message: 'Archivo subido correctamente', type: 'success' });
+          const currentFiles = (clientData as any)[type] || [];
+          if (clientData?.id) {
+            onUpdateClient(clientData.id, { [type]: [...currentFiles, newFile] });
+            setToast({ show: true, message: 'Archivo subido correctamente', type: 'success' });
+          }
         } catch (error) {
           console.error("Error uploading file:", error);
           setToast({ show: true, message: 'Error al subir el archivo', type: 'error' });
@@ -6513,7 +6578,7 @@ const ProfileScreen = ({
                   value={assignedCoachId}
                   onChange={(e) => {
                     setAssignedCoachId(e.target.value);
-                    if (clientData) onUpdateClient(clientData.id, { assignedCoachId: e.target.value });
+                    if (clientData?.id) onUpdateClient(clientData.id, { assignedCoachId: e.target.value });
                   }}
                   className="w-full bg-bg-surface/50 border border-black/10 dark:border-white/10 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary outline-none"
                 >
@@ -6530,7 +6595,7 @@ const ProfileScreen = ({
                 <div className="flex flex-col gap-2">
                   <button 
                     onClick={() => {
-                      if (clientData) onUpdateClient(clientData.id, { active: !clientData.active });
+                      if (clientData?.id) onUpdateClient(clientData.id, { active: !clientData.active });
                     }}
                     className={cn(
                       "w-full py-3 rounded-lg font-bold text-sm transition-all flex items-center justify-center gap-2",
@@ -6705,7 +6770,7 @@ const ProfileScreen = ({
                 <div className="flex flex-col w-full gap-2 mt-2">
                   <button 
                     onClick={() => {
-                      if (clientData) {
+                      if (clientData?.id) {
                         onUpdateClient(clientData.id, { isDeleted: true });
                         setShowDeleteConfirm(false);
                         // Go back to dashboard
@@ -6736,9 +6801,11 @@ const ProfileScreen = ({
             onClose={() => setShowIntakeForm(false)}
             client={clientData}
             onSave={(data) => {
-              onUpdateClient(clientData.id, { intakeForm: data });
-              setShowIntakeForm(false);
-              setToast({ show: true, message: 'Ficha de cliente guardada', type: 'success' });
+              if (clientData?.id) {
+                onUpdateClient(clientData.id, { intakeForm: data });
+                setShowIntakeForm(false);
+                setToast({ show: true, message: 'Ficha de cliente guardada', type: 'success' });
+              }
             }}
           />
         )}
@@ -6852,10 +6919,20 @@ export default function App() {
       }, (error) => handleFirestoreError(error, OperationType.LIST, 'notifications'));
     }
 
-    const usersUnsubscribe = onSnapshot(collection(db, 'users'), (snapshot) => {
-      const users = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as UserProfile));
-      setUsersList(users);
-    }, (error) => handleFirestoreError(error, OperationType.LIST, 'users'));
+    let usersQuery;
+    if (userRole === 'admin' || userRole === 'coach') {
+      usersQuery = collection(db, 'users');
+    } else if (userRole === 'client' && currentUser) {
+      usersQuery = query(collection(db, 'users'), where('__name__', '==', currentUser.uid));
+    }
+
+    let usersUnsubscribe = () => {};
+    if (usersQuery) {
+      usersUnsubscribe = onSnapshot(usersQuery, (snapshot) => {
+        const users = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as UserProfile));
+        setUsersList(users);
+      }, (error) => handleFirestoreError(error, OperationType.LIST, 'users'));
+    }
 
     return () => {
       coachesUnsubscribe();
@@ -7152,11 +7229,23 @@ export default function App() {
 
   const currentClient = selectedClient || (
     userRole === 'client' 
-      ? (clientsList.find(c => c.id === currentUser?.uid) || clientsList.find(c => c.id === '1') || clientsList[0])
+      ? (clientsList.find(c => c.id === currentUser?.uid) || clientsList.find(c => c.id === '1') || clientsList[0] || null)
       : (userRole === 'admin' || userRole === 'coach') 
-        ? clientsList.find(c => c.id === `self_${loggedInCoach?.id}`) 
+        ? (loggedInCoach ? (clientsList.find(c => c.id === `self_${loggedInCoach.id}`) || null) : null)
         : null
-  );
+  ) || null;
+
+  useEffect(() => {
+    if (screen === 'profile') {
+      console.log('Profile Screen Context:', {
+        userRole,
+        currentClientId: currentClient?.id,
+        loggedInCoachId: loggedInCoach?.id,
+        selectedClientId: selectedClient?.id,
+        clientsListLength: clientsList.length
+      });
+    }
+  }, [screen, userRole, currentClient, loggedInCoach, selectedClient, clientsList]);
 
   if (!isAuthReady) {
     return (
@@ -7185,7 +7274,7 @@ export default function App() {
               <img src={selectedClient?.img} className="w-full h-full object-cover" alt={selectedClient?.name} />
             </div>
             <p className="text-[10px] font-bold uppercase tracking-widest text-primary">
-              {selectedClient?.id.startsWith('self_') ? 'Mi Seguimiento' : `Modo Edición: ${selectedClient?.name}`}
+              {selectedClient?.id?.startsWith && selectedClient.id.startsWith('self_') ? 'Mi Seguimiento' : `Modo Edición: ${selectedClient?.name}`}
             </p>
           </div>
           <div className="flex gap-2">
@@ -7272,19 +7361,21 @@ export default function App() {
             {screen === 'nutrition' && <NutritionScreen isCoach={isCoachViewing} clientData={currentClient} />}
             {screen === 'progress' && <ProgressScreen isCoach={isCoachViewing} clientData={currentClient} />}
             {screen === 'profile' && (
-              <ProfileScreen 
-                userRole={userRole}
-                clientData={currentClient}
-                coachData={loggedInCoach}
-                onUpdateClient={handleUpdateClient}
-                onUpdateCoach={handleUpdateCoach}
-                onNavigate={setScreen}
-                darkMode={darkMode}
-                onToggleDarkMode={() => setDarkMode(!darkMode)}
-                onLogout={handleLogout}
-                coaches={coachesList}
-                setToast={setToast}
-              />
+              <ErrorBoundary fallback={<div className="p-6 text-center text-red-500">Error al cargar el perfil</div>}>
+                <ProfileScreen 
+                  userRole={userRole}
+                  clientData={currentClient}
+                  coachData={loggedInCoach}
+                  onUpdateClient={handleUpdateClient}
+                  onUpdateCoach={handleUpdateCoach}
+                  onNavigate={setScreen}
+                  darkMode={darkMode}
+                  onToggleDarkMode={() => setDarkMode(!darkMode)}
+                  onLogout={handleLogout}
+                  coaches={coachesList}
+                  setToast={setToast}
+                />
+              </ErrorBoundary>
             )}
           </motion.div>
         </AnimatePresence>
@@ -7296,7 +7387,7 @@ export default function App() {
             active={screen} 
             onChange={setScreen} 
             role={userRole} 
-            clientData={selectedClient || (userRole === 'client' ? clientsList[0] : null)} 
+            clientData={selectedClient || (userRole === 'client' ? (clientsList[0] || null) : null)} 
           />
         </div>
       )}

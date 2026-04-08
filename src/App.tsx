@@ -5604,16 +5604,22 @@ const ProgressScreen = ({ isCoach, clientData }: { isCoach?: boolean; clientData
   const [achievements, setAchievements] = useState<Achievement[]>(() => {
     const saved = localStorage.getItem(`achievements_${clientData?.id || 'default'}`);
     if (saved) {
-      const parsedSaved: Achievement[] = JSON.parse(saved);
-      // Merge: keep saved progress but add new achievements from DEFAULT_ACHIEVEMENTS
-      const merged = [...DEFAULT_ACHIEVEMENTS].map(def => {
-        const existing = parsedSaved.find(s => s.id === def.id);
-        if (existing) {
-          return { ...def, completed: existing.completed, howTo: existing.howTo };
+      try {
+        const parsedSaved = JSON.parse(saved);
+        if (Array.isArray(parsedSaved)) {
+          // Merge: keep saved progress but add new achievements from DEFAULT_ACHIEVEMENTS
+          const merged = [...DEFAULT_ACHIEVEMENTS].map(def => {
+            const existing = parsedSaved.find(s => s && s.id === def.id);
+            if (existing) {
+              return { ...def, completed: existing.completed, howTo: existing.howTo };
+            }
+            return def;
+          });
+          return merged;
         }
-        return def;
-      });
-      return merged;
+      } catch (e) {
+        console.error('Error parsing achievements:', e);
+      }
     }
     return DEFAULT_ACHIEVEMENTS;
   });
@@ -5621,18 +5627,24 @@ const ProgressScreen = ({ isCoach, clientData }: { isCoach?: boolean; clientData
   useEffect(() => {
     const saved = localStorage.getItem(`achievements_${clientData?.id || 'default'}`);
     if (saved) {
-      const parsedSaved: Achievement[] = JSON.parse(saved);
-      const merged = [...DEFAULT_ACHIEVEMENTS].map(def => {
-        const existing = parsedSaved.find(s => s.id === def.id);
-        if (existing) {
-          return { ...def, completed: existing.completed, howTo: existing.howTo };
+      try {
+        const parsedSaved = JSON.parse(saved);
+        if (Array.isArray(parsedSaved)) {
+          const merged = [...DEFAULT_ACHIEVEMENTS].map(def => {
+            const existing = parsedSaved.find(s => s && s.id === def.id);
+            if (existing) {
+              return { ...def, completed: existing.completed, howTo: existing.howTo };
+            }
+            return def;
+          });
+          setAchievements(merged);
+          return;
         }
-        return def;
-      });
-      setAchievements(merged);
-    } else {
-      setAchievements(DEFAULT_ACHIEVEMENTS);
+      } catch (e) {
+        console.error('Error parsing achievements in effect:', e);
+      }
     }
+    setAchievements(DEFAULT_ACHIEVEMENTS);
   }, [clientData?.id]);
 
   const [editingAchievement, setEditingAchievement] = useState<Achievement | null>(null);
@@ -6173,8 +6185,8 @@ const ProfileScreen = ({
   const [showIntakeForm, setShowIntakeForm] = useState(false);
 
   const isCoach = userRole === 'admin' || userRole === 'coach';
-  const isViewingClient = isCoach && !!clientData && typeof clientData?.id === 'string' && clientData.id.startsWith && !clientData.id.startsWith('self_');
-  const isCoachSelf = isCoach && (!clientData || (typeof clientData?.id === 'string' && clientData.id.startsWith && clientData.id.startsWith('self_')));
+  const isViewingClient = isCoach && clientData?.id && typeof clientData.id === 'string' && !clientData.id.startsWith('self_');
+  const isCoachSelf = isCoach && (!clientData?.id || (typeof clientData.id === 'string' && clientData.id.startsWith('self_')));
   const isAdmin = userRole === 'admin';
 
   const [editedData, setEditedData] = useState({
@@ -6419,7 +6431,7 @@ const ProfileScreen = ({
                   className="w-full h-12 bg-bg-surface/50 border border-black/10 dark:border-white/10 rounded-xl px-4 text-text-bright focus:ring-2 focus:ring-primary outline-none appearance-none"
                 >
                   <option value="" disabled>Seleccionar Coach</option>
-                  {coaches.map(c => (
+                  {coaches.filter(c => c && c.id).map(c => (
                     <option key={c.id} value={c.id}>{c.name}</option>
                   ))}
                 </select>
@@ -6466,7 +6478,7 @@ const ProfileScreen = ({
                 </button>
               </div>
               <div className="space-y-2">
-                {clientData?.diets?.map(diet => (
+                {clientData?.diets?.filter(d => d && d.id).map(diet => (
                   <div key={diet.id} className="flex items-center justify-between p-3 glass-card rounded-xl">
                     <div className="flex items-center gap-3">
                       <FileText className="size-5 text-primary" />
@@ -6502,7 +6514,7 @@ const ProfileScreen = ({
                 </button>
               </div>
               <div className="space-y-2">
-                {clientData?.workouts?.map(workout => (
+                {clientData?.workouts?.filter(w => w && w.id).map(workout => (
                   <div key={workout.id} className="flex items-center justify-between p-3 glass-card rounded-xl">
                     <div className="flex items-center gap-3">
                       <FileText className="size-5 text-primary" />
@@ -6544,7 +6556,7 @@ const ProfileScreen = ({
             </div>
             {completedAchievements.length > 0 ? (
               <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
-                {completedAchievements.map(a => (
+                {completedAchievements.filter(a => a && a.id).map(a => (
                   <div key={a.id} className="size-14 shrink-0 rounded-2xl bg-primary/10 flex flex-col items-center justify-center border border-primary/20 gap-1">
                     {a.icon === 'Dumbbell' && <Dumbbell className="size-5 text-primary" />}
                     {a.icon === 'Flame' && <Flame className="size-5 text-primary" />}
@@ -6583,7 +6595,7 @@ const ProfileScreen = ({
                   className="w-full bg-bg-surface/50 border border-black/10 dark:border-white/10 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary outline-none"
                 >
                   <option value="" disabled>Seleccionar Entrenador</option>
-                  {coaches.map(c => (
+                  {coaches.filter(c => c && c.id).map(c => (
                     <option key={c.id} value={c.id}>{c.name}</option>
                   ))}
                 </select>
@@ -7229,9 +7241,9 @@ export default function App() {
 
   const currentClient = selectedClient || (
     userRole === 'client' 
-      ? (clientsList.find(c => c.id === currentUser?.uid) || clientsList.find(c => c.id === '1') || clientsList[0] || null)
+      ? (clientsList.find(c => c && c.id === currentUser?.uid) || clientsList.find(c => c && c.id === '1') || clientsList[0] || null)
       : (userRole === 'admin' || userRole === 'coach') 
-        ? (loggedInCoach ? (clientsList.find(c => c.id === `self_${loggedInCoach.id}`) || null) : null)
+        ? (loggedInCoach ? (clientsList.find(c => c && c.id === `self_${loggedInCoach.id}`) || null) : null)
         : null
   ) || null;
 

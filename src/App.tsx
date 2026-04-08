@@ -2644,16 +2644,22 @@ const LoginScreen = ({ setToast, onLogin, onBootstrap }: {
     <div className="min-h-screen bg-bg-dark text-text-bright flex flex-col justify-center px-6 max-w-[480px] mx-auto w-full relative overflow-hidden transition-colors duration-300">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(50,95,235,0.08),transparent_70%)] pointer-events-none"></div>
       
-      <div className="relative z-10 flex flex-col items-center mb-8">
+      <div className="relative z-10 flex flex-col items-center mb-8 select-none pointer-events-none no-select">
         <button 
           type="button"
-          onClick={handleLogoClick}
-          className="bg-primary/20 p-6 rounded-3xl mb-6 cursor-pointer active:scale-90 transition-all hover:bg-primary/30 outline-none"
+          onPointerDown={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            handleLogoClick();
+          }}
+          className="bg-primary/20 p-8 rounded-3xl mb-6 cursor-pointer active:scale-90 hover:scale-105 transition-all hover:bg-primary/30 outline-none select-none touch-none pointer-events-auto no-select"
+          style={{ userSelect: 'none', WebkitUserSelect: 'none' }}
+          title="Secret Bootstrap"
         >
-          <Dumbbell className="text-primary size-14" />
+          <Dumbbell className="text-primary size-16 pointer-events-none" aria-hidden="true" />
         </button>
-        <h1 className="text-[32px] font-bold leading-tight text-center">Bienvenido de nuevo</h1>
-        <p className="text-text-muted text-base mt-2 text-center">Accede a tu plan personalizado</p>
+        <h1 className="text-[32px] font-bold leading-tight text-center select-none pointer-events-none no-select" style={{ userSelect: 'none', WebkitUserSelect: 'none' }}>Bienvenido de nuevo</h1>
+        <p className="text-text-muted text-base mt-2 text-center select-none pointer-events-none no-select" style={{ userSelect: 'none', WebkitUserSelect: 'none' }}>Accede a tu plan personalizado</p>
       </div>
 
         <form className="space-y-6 relative z-10" onSubmit={handleSubmit}>

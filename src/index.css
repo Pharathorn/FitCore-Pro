@@ -61,4 +61,11 @@
   .neon-text {
     text-shadow: 0 0 10px rgba(50, 95, 235, 0.4);
   }
+
+  .no-select {
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+  }
 }

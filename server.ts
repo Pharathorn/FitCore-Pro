@@ -24,11 +24,13 @@ async function startServer() {
 
       // Bootstrap Admin User
       const bootstrapAdmin = async () => {
+        console.log("--- STARTING AGGRESSIVE BOOTSTRAP ---");
         const adminEmails = ["admin@admin.com", "alvarowowplayer@gmail.com"];
         const adminPassword = "admin123";
         
         // Use the specific database ID from config
         const db = admin.firestore(config.firestoreDatabaseId);
+        console.log(`Using Firestore Database ID: ${config.firestoreDatabaseId}`);
         
         for (const adminEmail of adminEmails) {
           try {
@@ -36,22 +38,25 @@ async function startServer() {
             try {
               const user = await admin.auth().getUserByEmail(adminEmail);
               uid = user.uid;
-              // Force password reset to admin123 on every startup to ensure access
+              // Force password reset and ensure user is enabled
               await admin.auth().updateUser(uid, {
                 password: adminPassword,
+                disabled: false,
                 displayName: adminEmail === "admin@admin.com" ? "Administrador" : "Álvaro Ruíz",
               });
-              console.log(`Admin user ${adminEmail} verified/updated in Auth:`, uid);
+              console.log(`[BOOTSTRAP] Admin user ${adminEmail} verified/updated in Auth. UID: ${uid}`);
             } catch (e: any) {
               if (e.code === 'auth/user-not-found') {
                 const userRecord = await admin.auth().createUser({
                   email: adminEmail,
                   password: adminPassword,
+                  disabled: false,
                   displayName: adminEmail === "admin@admin.com" ? "Administrador" : "Álvaro Ruíz",
                 });
                 uid = userRecord.uid;
-                console.log(`Created bootstrap admin user ${adminEmail} in Auth:`, uid);
+                console.log(`[BOOTSTRAP] Created bootstrap admin user ${adminEmail} in Auth. UID: ${uid}`);
               } else {
+                console.error(`[BOOTSTRAP] Error checking Auth for ${adminEmail}:`, e);
                 throw e;
               }
             }
@@ -124,6 +129,7 @@ async function startServer() {
   });
 
   app.post("/api/admin/repair", async (req, res) => {
+    console.log("--- REPAIR ENDPOINT CALLED ---");
     const adminEmails = ["admin@admin.com", "alvarowowplayer@gmail.com"];
     const adminPassword = "admin123";
     const results = [];
@@ -134,18 +140,22 @@ async function startServer() {
         try {
           const user = await admin.auth().getUserByEmail(adminEmail);
           uid = user.uid;
-          // Force password reset to admin123 to ensure access
+          // Force password reset and ensure enabled
           await admin.auth().updateUser(uid, {
-            password: adminPassword
+            password: adminPassword,
+            disabled: false
           });
+          console.log(`[REPAIR] Updated Auth for ${adminEmail}`);
         } catch (e: any) {
           if (e.code === 'auth/user-not-found') {
             const userRecord = await admin.auth().createUser({
               email: adminEmail,
               password: adminPassword,
+              disabled: false,
               displayName: adminEmail === "admin@admin.com" ? "Administrador" : "Álvaro Ruíz",
             });
             uid = userRecord.uid;
+            console.log(`[REPAIR] Created Auth for ${adminEmail}`);
           } else {
             throw e;
           }
@@ -153,6 +163,8 @@ async function startServer() {
 
         const config = JSON.parse(fs.readFileSync(path.join(process.cwd(), "firebase-applet-config.json"), "utf-8"));
         const db = admin.firestore(config.firestoreDatabaseId);
+        console.log(`[REPAIR] Using DB: ${config.firestoreDatabaseId}`);
+        
         await db.collection('users').doc(uid).set({
           email: adminEmail,
           name: adminEmail === "admin@admin.com" ? "Administrador" : "Álvaro Ruíz",

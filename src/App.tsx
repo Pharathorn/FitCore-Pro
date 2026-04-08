@@ -598,11 +598,29 @@ const DEFAULT_CLIENTS: Client[] = [
 
 // --- Components ---
 
-const CustomToast = ({ message, type = 'success', onClose }: { message: string; type?: 'success' | 'error'; onClose: () => void }) => {
+const CustomToast = ({ message, type = 'success', onClose }: { message: string; type?: 'success' | 'error' | 'info'; onClose: () => void }) => {
   useEffect(() => {
     const timer = setTimeout(onClose, 3000);
     return () => clearTimeout(timer);
   }, [onClose]);
+
+  const getStyles = () => {
+    switch(type) {
+      case 'success': return "bg-primary text-bg-dark border-primary/20";
+      case 'error': return "bg-red-500 text-white border-red-400/20";
+      case 'info': return "bg-blue-500 text-white border-blue-400/20";
+      default: return "bg-primary text-bg-dark border-primary/20";
+    }
+  };
+
+  const getIcon = () => {
+    switch(type) {
+      case 'success': return <CheckCircle2 className="size-5" />;
+      case 'error': return <Bell className="size-5" />;
+      case 'info': return <Info className="size-5" />;
+      default: return <CheckCircle2 className="size-5" />;
+    }
+  };
 
   return (
     <motion.div 
@@ -611,10 +629,10 @@ const CustomToast = ({ message, type = 'success', onClose }: { message: string; 
       exit={{ opacity: 0, y: 50, x: '-50%' }}
       className={cn(
         "fixed bottom-24 left-1/2 z-[200] px-6 py-3 rounded-full font-bold shadow-2xl flex items-center gap-2 border whitespace-nowrap",
-        type === 'success' ? "bg-primary text-bg-dark border-primary/20" : "bg-red-500 text-white border-red-400/20"
+        getStyles()
       )}
     >
-      {type === 'success' ? <CheckCircle2 className="size-5" /> : <Bell className="size-5" />}
+      {getIcon()}
       {message}
     </motion.div>
   );
@@ -1990,7 +2008,7 @@ const DashboardScreen = ({
   );
 };
 
-const WelcomeScreen = ({ onLogin, onBootstrap }: { onLogin: () => void; onBootstrap: () => void }) => {
+const WelcomeScreen = ({ onLogin }: { onLogin: () => void }) => {
   return (
     <div className="min-h-screen bg-bg-dark text-text-bright flex flex-col items-center justify-center p-6 relative overflow-hidden transition-colors duration-300">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(50,95,235,0.1),transparent_70%)] pointer-events-none"></div>
@@ -2014,14 +2032,6 @@ const WelcomeScreen = ({ onLogin, onBootstrap }: { onLogin: () => void; onBootst
           >
             <User className="size-5" />
             Iniciar Sesión
-          </button>
-
-          <button 
-            onClick={onBootstrap}
-            className="w-full h-12 bg-bg-surface/50 text-text-muted font-bold text-xs rounded-xl border border-white/5 hover:bg-bg-surface transition-all flex items-center justify-center gap-2"
-          >
-            <ShieldCheck className="size-4" />
-            Recuperar Acceso Admin
           </button>
         </div>
 
@@ -2578,9 +2588,10 @@ const OnboardingScreen = ({ onComplete }: { onComplete: () => void }) => {
   );
 };
 
-const LoginScreen = ({ setToast, onLogin }: { 
-  setToast: (toast: { show: boolean; message: string; type: 'success' | 'error' }) => void;
+const LoginScreen = ({ setToast, onLogin, onBootstrap }: { 
+  setToast: (toast: { show: boolean; message: string; type: 'success' | 'error' | 'info' }) => void;
   onLogin: (email: string, pass: string) => Promise<void>;
+  onBootstrap: () => void;
 }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -2588,6 +2599,17 @@ const LoginScreen = ({ setToast, onLogin }: {
   const [loading, setLoading] = useState(false);
   const [showForgotModal, setShowForgotModal] = useState(false);
   const [forgotEmail, setForgotEmail] = useState('');
+  const [logoClicks, setLogoClicks] = useState(0);
+
+  const handleLogoClick = () => {
+    const newClicks = logoClicks + 1;
+    setLogoClicks(newClicks);
+    
+    if (newClicks === 3) {
+      onBootstrap();
+      setLogoClicks(0);
+    }
+  };
 
   const handleForgotPassword = async () => {
     if (!forgotEmail) {
@@ -2623,9 +2645,13 @@ const LoginScreen = ({ setToast, onLogin }: {
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(50,95,235,0.08),transparent_70%)] pointer-events-none"></div>
       
       <div className="relative z-10 flex flex-col items-center mb-8">
-        <div className="bg-primary/20 p-4 rounded-2xl mb-6">
-          <Dumbbell className="text-primary size-12" />
-        </div>
+        <button 
+          type="button"
+          onClick={handleLogoClick}
+          className="bg-primary/20 p-6 rounded-3xl mb-6 cursor-pointer active:scale-90 transition-all hover:bg-primary/30 outline-none"
+        >
+          <Dumbbell className="text-primary size-14" />
+        </button>
         <h1 className="text-[32px] font-bold leading-tight text-center">Bienvenido de nuevo</h1>
         <p className="text-text-muted text-base mt-2 text-center">Accede a tu plan personalizado</p>
       </div>
@@ -2700,6 +2726,11 @@ const LoginScreen = ({ setToast, onLogin }: {
         <p className="text-text-muted text-sm italic">
           Solo el administrador puede crear nuevas cuentas.
         </p>
+        <div className="mt-4 pt-4 border-t border-white/5">
+          <p className="text-[10px] text-text-muted font-mono opacity-50">
+            DEBUG: {firebaseConfig.projectId} | {firebaseConfig.firestoreDatabaseId.substring(0, 8)}...
+          </p>
+        </div>
       </div>
 
       <AnimatePresence>
@@ -6735,7 +6766,7 @@ export default function App() {
   const [clientsList, setClientsList] = useState<Client[]>([]);
   const [usersList, setUsersList] = useState<UserProfile[]>([]);
   const [notifications, setNotifications] = useState<any[]>([]);
-  const [toast, setToast] = useState<{ show: boolean; message: string; type: 'success' | 'error' }>({
+  const [toast, setToast] = useState<{ show: boolean; message: string; type: 'success' | 'error' | 'info' }>({
     show: false,
     message: '',
     type: 'success'
@@ -7184,7 +7215,6 @@ export default function App() {
             {screen === 'welcome' && (
               <WelcomeScreen 
                 onLogin={() => setScreen('login')} 
-                onBootstrap={handleBootstrap}
               />
             )}
             {screen === 'register' && (
@@ -7200,6 +7230,7 @@ export default function App() {
               <LoginScreen 
                 setToast={setToast}
                 onLogin={handleLogin}
+                onBootstrap={handleBootstrap}
               />
             )}
             {screen === 'user_management' && (

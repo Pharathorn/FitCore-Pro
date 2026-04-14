@@ -165,6 +165,18 @@ const handleFirestoreError = (error: unknown, operationType: OperationType, path
 };
 
 // --- Constants ---
+const getSafeLocalStorage = (key: string, defaultValue: any) => {
+  try {
+    const saved = localStorage.getItem(key);
+    if (saved === null) return defaultValue;
+    const parsed = JSON.parse(saved);
+    return parsed !== undefined ? parsed : defaultValue;
+  } catch (e) {
+    console.error(`Error parsing localStorage key "${key}":`, e);
+    return defaultValue;
+  }
+};
+
 const DEFAULT_ACHIEVEMENTS: Achievement[] = [
   // Entrenamiento (55)
   { id: 't1', title: 'Primer Paso', description: 'Primer entrenamiento completado', icon: 'Dumbbell', category: 'training', completed: true },
@@ -507,10 +519,12 @@ interface DietFile {
 interface DailyLog {
   date: string;
   weight?: number;
+  bodyFat?: number;
   sleepHours?: number;
   sleepQuality?: 'Mal' | 'Regular' | 'Bien' | 'Excelente';
   stepsCompleted: boolean;
   waterCompleted: boolean;
+  notes?: string;
 }
 
 interface Ingredient {
@@ -1360,20 +1374,18 @@ const HomeScreen = ({ clientData, isCoach, coaches }: { clientData: Client | nul
   const assignedCoach = coaches.find(c => c.id === clientData?.assignedCoachId);
   const [dailyLog, setDailyLog] = useState<DailyLog>(() => {
     const today = new Date().toISOString().split('T')[0];
-    const saved = localStorage.getItem(`dailyLog_${clientData?.id || 'default'}_${today}`);
-    return saved ? JSON.parse(saved) : {
+    return getSafeLocalStorage(`dailyLog_${clientData?.id || 'default'}_${today}`, {
       date: today,
       stepsCompleted: false,
       waterCompleted: false
-    };
+    });
   });
 
   const [targets, setTargets] = useState(() => {
-    const saved = clientData?.id ? localStorage.getItem(`clientTargets_${clientData.id}`) : null;
-    return saved ? JSON.parse(saved) : {
+    return getSafeLocalStorage(`clientTargets_${clientData?.id || 'default'}`, {
       steps: clientData?.stepsTarget || 10000,
       water: clientData?.waterTarget || 2.5
-    };
+    });
   });
 
   useEffect(() => {
@@ -1494,20 +1506,34 @@ const HomeScreen = ({ clientData, isCoach, coaches }: { clientData: Client | nul
         <section className="glass-panel rounded-3xl p-6 space-y-6">
           <h3 className="text-lg font-bold">{isCoach ? 'Último Registro del Cliente' : 'Registro Diario'}</h3>
           
-          <div className="space-y-4">
-            <div>
-              <label className="text-[10px] font-bold text-text-muted uppercase tracking-widest mb-2 block">Peso en Ayunas (kg)</label>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold text-text-muted uppercase tracking-widest ml-1 block">Peso (kg)</label>
               <input 
                 type="number" 
                 step="0.1"
                 value={dailyLog.weight || ''}
-                onChange={(e) => updateLog({ weight: parseFloat(e.target.value) })}
-                placeholder={isCoach ? "Sin registro" : "Ej: 75.5"}
+                onChange={(e) => updateLog({ weight: parseFloat(e.target.value) || undefined })}
                 disabled={isCoach}
-                className="w-full bg-bg-surface/30 border border-black/10 dark:border-white/10 rounded-xl p-4 text-xl font-bold focus:ring-2 focus:ring-primary outline-none disabled:opacity-50"
+                className="w-full h-12 bg-bg-surface/50 border border-black/10 dark:border-white/10 rounded-xl px-4 text-text-bright focus:ring-2 focus:ring-primary outline-none disabled:opacity-50"
+                placeholder={isCoach ? "Sin registro" : "64.2"}
               />
             </div>
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold text-text-muted uppercase tracking-widest ml-1 block">Grasa (%)</label>
+              <input 
+                type="number" 
+                step="0.1"
+                value={dailyLog.bodyFat || ''}
+                onChange={(e) => updateLog({ bodyFat: parseFloat(e.target.value) || undefined })}
+                disabled={isCoach}
+                className="w-full h-12 bg-bg-surface/50 border border-black/10 dark:border-white/10 rounded-xl px-4 text-text-bright focus:ring-2 focus:ring-primary outline-none disabled:opacity-50"
+                placeholder={isCoach ? "Sin registro" : "21.4"}
+              />
+            </div>
+          </div>
 
+          <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="text-[10px] font-bold text-text-muted uppercase tracking-widest mb-2 block">Horas de Sueño</label>
@@ -6193,6 +6219,7 @@ const ProfileScreen = ({
     name: isViewingClient ? clientData?.name || '' : (isCoachSelf ? coachData?.name || '' : (clientData?.name || 'Sarah Jenkins')),
     img: isViewingClient ? clientData?.img || '' : (isCoachSelf ? coachData?.img || '' : (clientData?.img || 'https://picsum.photos/seed/sarah/200/200')),
     targetWeight: clientData?.targetWeight || '',
+    bodyFat: clientData?.bodyFat || '',
     dietType: clientData?.dietType || '',
     allergies: clientData?.allergies || ''
   });
@@ -6203,6 +6230,7 @@ const ProfileScreen = ({
       name: isViewingClient ? clientData?.name || '' : (isCoachSelf ? coachData?.name || '' : (clientData?.name || 'Sarah Jenkins')),
       img: isViewingClient ? clientData?.img || '' : (isCoachSelf ? coachData?.img || '' : (clientData?.img || 'https://picsum.photos/seed/sarah/200/200')),
       targetWeight: clientData?.targetWeight || '',
+      bodyFat: clientData?.bodyFat || '',
       dietType: clientData?.dietType || '',
       allergies: clientData?.allergies || ''
     });
@@ -6230,7 +6258,22 @@ const ProfileScreen = ({
           </div>
           <p className="text-text-bright font-bold">Error de Datos</p>
           <p className="text-text-muted text-sm">No se ha podido encontrar información de tu perfil.</p>
-          <button onClick={onLogout} className="text-primary font-bold text-sm">Cerrar Sesión</button>
+          <div className="flex flex-col gap-4 mt-4">
+            <button 
+              onClick={onLogout} 
+              className="px-6 py-3 bg-primary text-bg-dark font-bold rounded-xl text-sm"
+            >
+              Cerrar Sesión
+            </button>
+            {onNavigate && (
+              <button 
+                onClick={() => onNavigate('dashboard')} 
+                className="text-text-muted text-xs hover:text-primary transition-colors"
+              >
+                Volver al Panel
+              </button>
+            )}
+          </div>
         </div>
       </div>
     );
@@ -6242,12 +6285,22 @@ const ProfileScreen = ({
         name: editedData.name, 
         img: editedData.img,
         targetWeight: editedData.targetWeight,
+        bodyFat: editedData.bodyFat,
         dietType: editedData.dietType,
         allergies: editedData.allergies,
         assignedCoachId: assignedCoachId
       });
     } else if (isCoachSelf && coachData?.id) {
       onUpdateCoach(coachData.id, { name: editedData.name, img: editedData.img });
+      // Also update the self client doc if it exists
+      if (clientData?.id) {
+        onUpdateClient(clientData.id, { 
+          name: editedData.name, 
+          img: editedData.img,
+          bodyFat: editedData.bodyFat,
+          targetWeight: editedData.targetWeight
+        });
+      }
     }
     setIsEditing(false);
   };
@@ -6304,18 +6357,21 @@ const ProfileScreen = ({
 
   const latestWeight = (() => {
     const today = new Date().toISOString().split('T')[0];
-    const saved = localStorage.getItem(`dailyLog_${clientData?.id || 'default'}_${today}`);
-    if (saved) {
-      const log = JSON.parse(saved);
-      if (log.weight) return `${log.weight} kg`;
-    }
+    const log = getSafeLocalStorage(`dailyLog_${clientData?.id || 'default'}_${today}`, null);
+    if (log && log.weight) return `${log.weight} kg`;
     return (isViewingClient ? clientData?.weight : (clientData?.weight || '64.2 kg')) || '64.2 kg';
   })();
 
+  const latestBodyFat = (() => {
+    const today = new Date().toISOString().split('T')[0];
+    const log = getSafeLocalStorage(`dailyLog_${clientData?.id || 'default'}_${today}`, null);
+    if (log && log.bodyFat) return `${log.bodyFat}%`;
+    return (isViewingClient ? clientData?.bodyFat : (clientData?.bodyFat || '21.4%')) || '21.4%';
+  })();
+
   const achievements: Achievement[] = (() => {
-    const saved = localStorage.getItem(`achievements_${clientData?.id || 'default'}`);
-    if (saved) return JSON.parse(saved);
-    return [];
+    const saved = getSafeLocalStorage(`achievements_${clientData?.id || 'default'}`, []);
+    return Array.isArray(saved) ? saved : [];
   })();
 
   const completedAchievements = achievements.filter(a => a.completed);
@@ -6367,7 +6423,9 @@ const ProfileScreen = ({
                 className="bg-bg-surface/50 border border-black/5 dark:border-white/10 rounded-lg px-4 py-2 text-2xl font-bold text-center w-full focus:ring-2 focus:ring-primary outline-none"
               />
             ) : (
-              <h3 className="text-2xl font-bold tracking-tight">{editedData.name}</h3>
+              <h3 className="text-2xl font-bold tracking-tight">
+                {editedData.name} {isCoachSelf && coachData?.role === 'admin' && !editedData.name.includes('(Admin)') ? '(Admin)' : ''}
+              </h3>
             )}
             <div className="flex items-center gap-2 mt-1 justify-center">
               <span className="size-2 rounded-full bg-primary neon-text"></span>
@@ -6385,24 +6443,36 @@ const ProfileScreen = ({
               <p className="text-xl font-bold">{latestWeight}</p>
             </div>
             <div className="glass-card rounded-xl p-4">
-              <p className="text-text-muted text-[10px] font-bold uppercase tracking-wider">Objetivo</p>
-              {isEditing ? (
-                <input 
-                  type="text"
-                  value={editedData.targetWeight}
-                  onChange={(e) => setEditedData(prev => ({ ...prev, targetWeight: e.target.value }))}
-                  className="bg-transparent border-b border-primary/20 text-xl font-bold w-full outline-none"
-                  placeholder="70 kg"
-                />
-              ) : (
-                <p className="text-xl font-bold">{editedData.targetWeight || '---'}</p>
-              )}
+              <p className="text-text-muted text-[10px] font-bold uppercase tracking-wider">Grasa Corporal</p>
+              <p className="text-xl font-bold">{latestBodyFat}</p>
             </div>
           </div>
         )}
 
         {clientData && isEditing && (
           <div className="space-y-4 mb-8">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-text-muted uppercase tracking-widest ml-1">Peso Objetivo</label>
+                <input 
+                  type="text"
+                  value={editedData.targetWeight}
+                  onChange={(e) => setEditedData(prev => ({ ...prev, targetWeight: e.target.value }))}
+                  className="w-full h-12 bg-bg-surface/50 border border-black/10 dark:border-white/10 rounded-xl px-4 text-text-bright focus:ring-2 focus:ring-primary outline-none"
+                  placeholder="70 kg"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-text-muted uppercase tracking-widest ml-1">Grasa Corporal</label>
+                <input 
+                  type="text"
+                  value={editedData.bodyFat}
+                  onChange={(e) => setEditedData(prev => ({ ...prev, bodyFat: e.target.value }))}
+                  className="w-full h-12 bg-bg-surface/50 border border-black/10 dark:border-white/10 rounded-xl px-4 text-text-bright focus:ring-2 focus:ring-primary outline-none"
+                  placeholder="21.4%"
+                />
+              </div>
+            </div>
             <div className="space-y-2">
               <label className="text-[10px] font-bold text-text-muted uppercase tracking-widest ml-1">Tipo de Dieta</label>
               <input 
@@ -6646,27 +6716,34 @@ const ProfileScreen = ({
           
           <div className="space-y-2">
             <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest ml-1">Soporte Directo</p>
-            {coaches.map((coach, i) => (
-              <button 
-                key={i}
-                onClick={() => {
-                  const message = encodeURIComponent(`Hola ${coach.name}, necesito soporte con mi plan.`);
-                  window.open(`https://wa.me/${coach.phone}?text=${message}`, '_blank');
-                }}
-                className="w-full flex items-center justify-between p-4 glass-card rounded-xl group transition-all hover:border-primary/40"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="size-8 rounded-full bg-secondary/20 flex items-center justify-center">
-                    <MessageCircle className="size-4 text-secondary" />
+            {coaches && coaches.length > 0 ? (
+              coaches.map((coach, i) => (
+                <button 
+                  key={i}
+                  onClick={() => {
+                    const message = encodeURIComponent(`Hola ${coach.name}, necesito soporte con mi plan.`);
+                    window.open(`https://wa.me/${coach.phone}?text=${message}`, '_blank');
+                  }}
+                  className="w-full flex items-center justify-between p-4 glass-card rounded-xl group transition-all hover:border-primary/40"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="size-8 rounded-full bg-secondary/20 flex items-center justify-center">
+                      <MessageCircle className="size-4 text-secondary" />
+                    </div>
+                    <div className="text-left">
+                      <span className="font-semibold block text-sm">Soporte con {coach.name}</span>
+                      <span className="text-[10px] text-text-muted">WhatsApp Directo</span>
+                    </div>
                   </div>
-                  <div className="text-left">
-                    <span className="font-semibold block text-sm">Soporte con {coach.name}</span>
-                    <span className="text-[10px] text-text-muted">WhatsApp Directo</span>
-                  </div>
-                </div>
-                <ChevronRight className="size-5 text-text-muted" />
-              </button>
-            ))}
+                  <ChevronRight className="size-5 text-text-muted" />
+                </button>
+              ))
+            ) : (
+              <div className="p-4 glass-card rounded-xl text-center border border-dashed border-black/10 dark:border-white/10">
+                <MessageCircle className="size-6 text-text-muted mx-auto mb-2 opacity-20" />
+                <p className="text-[10px] text-text-muted font-bold uppercase tracking-widest">No hay entrenadores disponibles</p>
+              </div>
+            )}
           </div>
 
           <button 
@@ -7246,6 +7323,17 @@ export default function App() {
         ? (loggedInCoach ? (clientsList.find(c => c && c.id === `self_${loggedInCoach.id}`) || null) : null)
         : null
   ) || null;
+
+  useEffect(() => {
+    console.log('App State:', {
+      screen,
+      userRole,
+      isAuthReady,
+      hasCurrentUser: !!currentUser,
+      hasCurrentClient: !!currentClient,
+      hasLoggedInCoach: !!loggedInCoach
+    });
+  }, [screen, userRole, isAuthReady, currentUser, currentClient, loggedInCoach]);
 
   useEffect(() => {
     if (screen === 'profile') {

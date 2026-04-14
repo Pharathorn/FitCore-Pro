@@ -89,7 +89,7 @@ async function startServer() {
               status: 'Hoy',
               active: true,
               img: `https://picsum.photos/seed/${uid}/100/100`,
-              enabledSections: ['workout', 'diet', 'progress', 'habits', 'chat'],
+              enabledSections: { training: true, nutrition: true, progress: true },
               assignedCoachId: uid
             }, { merge: true });
 
@@ -192,7 +192,7 @@ async function startServer() {
           status: 'Hoy',
           active: true,
           img: `https://picsum.photos/seed/${uid}/100/100`,
-          enabledSections: ['workout', 'diet', 'progress', 'habits', 'chat'],
+          enabledSections: { training: true, nutrition: true, progress: true },
           assignedCoachId: uid
         }, { merge: true });
 

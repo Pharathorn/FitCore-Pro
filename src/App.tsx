@@ -161,7 +161,34 @@ const handleFirestoreError = (error: unknown, operationType: OperationType, path
     path
   };
   console.error('Firestore Error: ', JSON.stringify(errInfo));
-  throw new Error(JSON.stringify(errInfo));
+  return errInfo;
+};
+
+const normalizeEnabledSections = (sections: any): EnabledSections => {
+  const defaultSections: EnabledSections = { training: true, nutrition: true, progress: true };
+  if (!sections) return defaultSections;
+  
+  if (Array.isArray(sections)) {
+    return {
+      training: sections.includes('workout') || sections.includes('training'),
+      nutrition: sections.includes('diet') || sections.includes('nutrition'),
+      progress: sections.includes('progress')
+    };
+  }
+  
+  return {
+    training: sections.training !== undefined ? !!sections.training : defaultSections.training,
+    nutrition: sections.nutrition !== undefined ? !!sections.nutrition : defaultSections.nutrition,
+    progress: sections.progress !== undefined ? !!sections.progress : defaultSections.progress
+  };
+};
+
+const normalizeClient = (client: any): Client | null => {
+  if (!client) return null;
+  return {
+    ...client,
+    enabledSections: normalizeEnabledSections(client.enabledSections)
+  } as Client;
 };
 
 // --- Constants ---
@@ -1623,7 +1650,18 @@ const DashboardScreen = ({
 
   const isAdmin = userRole === 'admin';
 
-  const unreadCount = notifications.filter(n => !n.read).length;
+  const unreadCount = notifications.filter(n => !n?.read).length;
+
+  const formatTime = (timestamp: any) => {
+    if (!timestamp) return '--:--';
+    try {
+      if (timestamp instanceof Date) return timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      if (timestamp && typeof timestamp.toDate === 'function') return timestamp.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      return '--:--';
+    } catch (e) {
+      return '--:--';
+    }
+  };
 
   const engagementData = [
     { day: 'MON', value: 65 },
@@ -1635,7 +1673,14 @@ const DashboardScreen = ({
     { day: 'SUN', value: 20 },
   ];
 
-  const filteredClients = clients.filter(c => {
+  const safeClients = (clients ?? [])
+    .filter(Boolean)
+    .map((client) => ({
+      ...client,
+      enabledSections: normalizeEnabledSections(client?.enabledSections),
+    }));
+
+  const filteredClients = safeClients.filter(c => {
     if (!c) return false;
     if (c.isDeleted) return false;
     
@@ -1708,7 +1753,7 @@ const DashboardScreen = ({
                     >
                       <div className="flex justify-between items-start mb-2">
                         <span className="text-[10px] font-black uppercase tracking-widest text-primary">Molestia Reportada</span>
-                        <span className="text-[10px] text-text-muted">{n.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                        <span className="text-[10px] text-text-muted">{formatTime(n.timestamp)}</span>
                       </div>
                       <p className="text-sm font-bold mb-1">
                         <span className="text-primary">{n.clientName}</span> reportó molestias en:
@@ -1907,106 +1952,110 @@ const DashboardScreen = ({
 
         <div className="space-y-3">
           {filteredClients.length > 0 ? (
-            filteredClients.map((client, i) => (
-              <div key={i} className="relative">
-                <div 
-                  className={cn(
-                    "w-full flex items-center gap-4 p-4 glass-card rounded-xl transition-all hover:bg-bg-surface/50",
-                    !client.active && "opacity-60 grayscale-[0.5]"
-                  )}
-                >
+            filteredClients.map((client) => {
+              const enabledSections = normalizeEnabledSections(client?.enabledSections);
+              
+              return (
+                <div key={client.id} className="relative">
                   <div 
-                    className="flex-1 flex items-center gap-4 cursor-pointer"
-                    onClick={() => onSelectClient(client)}
+                    className={cn(
+                      "w-full flex items-center gap-4 p-4 glass-card rounded-xl transition-all hover:bg-bg-surface/50",
+                      !client.active && "opacity-60 grayscale-[0.5]"
+                    )}
                   >
-                    <div className="size-12 rounded-full overflow-hidden border-2 border-primary/20">
-                      <img src={client?.img} className="w-full h-full object-cover" alt={client?.name} />
-                    </div>
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <h4 className="font-bold text-sm text-text-bright">{client?.name}</h4>
-                        {!client?.active && (
-                          <span className="text-[8px] bg-text-muted text-bg-dark px-1.5 py-0.5 rounded-full font-bold uppercase">Inactivo</span>
-                        )}
-                      </div>
-                      <p className="text-text-muted text-xs mt-0.5">{client.program}</p>
-                      <div className="flex gap-2 mt-2">
-                        {client.enabledSections.training && <Dumbbell className="size-3 text-primary" />}
-                        {client.enabledSections.nutrition && <Utensils className="size-3 text-primary" />}
-                        {client.enabledSections.progress && <TrendingUp className="size-3 text-primary" />}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex flex-col gap-2 items-end">
-                    <div className="text-right">
-                      <p className="text-xs font-bold text-text-bright">{client.status}</p>
-                      <p className={cn("text-[10px] font-medium uppercase tracking-tight", client.active ? "text-primary" : "text-text-muted")}>
-                        {client.active ? 'Activo' : 'Descanso'}
-                      </p>
-                    </div>
-                    <button 
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setEditingSections(editingSections === client.id ? null : client.id);
-                      }}
-                      className="p-1.5 bg-bg-surface/50 rounded-lg text-text-muted hover:text-primary transition-colors"
+                    <div 
+                      className="flex-1 flex items-center gap-4 cursor-pointer"
+                      onClick={() => onSelectClient(client)}
                     >
-                      <Settings className="size-4" />
-                    </button>
-                    {!isAdmin && client.assignedCoachId !== coach?.id && !client?.id?.startsWith('self_') && (
+                      <div className="size-12 rounded-full overflow-hidden border-2 border-primary/20">
+                        <img src={client?.img} className="w-full h-full object-cover" alt={client?.name} />
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <h4 className="font-bold text-sm text-text-bright">{client?.name}</h4>
+                          {!client?.active && (
+                            <span className="text-[8px] bg-text-muted text-bg-dark px-1.5 py-0.5 rounded-full font-bold uppercase">Inactivo</span>
+                          )}
+                        </div>
+                        <p className="text-text-muted text-xs mt-0.5">{client.program}</p>
+                        <div className="flex gap-2 mt-2">
+                          {enabledSections.training && <Dumbbell className="size-3 text-primary" />}
+                          {enabledSections.nutrition && <Utensils className="size-3 text-primary" />}
+                          {enabledSections.progress && <TrendingUp className="size-3 text-primary" />}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex flex-col gap-2 items-end">
+                      <div className="text-right">
+                        <p className="text-xs font-bold text-text-bright">{client.status}</p>
+                        <p className={cn("text-[10px] font-medium uppercase tracking-tight", client.active ? "text-primary" : "text-text-muted")}>
+                          {client.active ? 'Activo' : 'Descanso'}
+                        </p>
+                      </div>
                       <button 
                         onClick={(e) => {
                           e.stopPropagation();
-                          onUpdateClient(client.id, { assignedCoachId: coach?.id || '' });
+                          setEditingSections(editingSections === client.id ? null : client.id);
                         }}
-                        className="p-1.5 bg-primary/10 rounded-lg text-primary hover:bg-primary/20 transition-colors"
-                        title="Asignarme este cliente"
+                        className="p-1.5 bg-bg-surface/50 rounded-lg text-text-muted hover:text-primary transition-colors"
                       >
-                        <UserPlus className="size-4" />
+                        <Settings className="size-4" />
                       </button>
-                    )}
+                      {!isAdmin && client.assignedCoachId !== coach?.id && !client?.id?.startsWith('self_') && (
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onUpdateClient(client.id, { assignedCoachId: coach?.id || '' });
+                          }}
+                          className="p-1.5 bg-primary/10 rounded-lg text-primary hover:bg-primary/20 transition-colors"
+                          title="Asignarme este cliente"
+                        >
+                          <UserPlus className="size-4" />
+                        </button>
+                      )}
+                    </div>
                   </div>
-                </div>
-                
-                <AnimatePresence>
-                  {editingSections === client.id && (
-                    <motion.div 
-                      initial={{ height: 0, opacity: 0 }}
-                      animate={{ height: 'auto', opacity: 1 }}
-                      exit={{ height: 0, opacity: 0 }}
-                      className="overflow-hidden"
-                    >
-                      <div className="mx-4 p-4 bg-bg-surface/50 border-x border-b border-black/10 dark:border-white/10 rounded-b-xl space-y-3">
-                        <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Secciones Activas</p>
-                        <div className="grid grid-cols-3 gap-2">
-                          {(['training', 'nutrition', 'progress'] as const).map(section => (
-                            <button
-                              key={section}
-                              onClick={() => {
-                                onUpdateClient(client.id, {
-                                  enabledSections: {
-                                    ...client.enabledSections,
-                                    [section]: !client.enabledSections[section]
-                                  }
-                                });
-                              }}
-                              className={cn(
-                                "py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider border transition-all",
-                                client.enabledSections[section] 
-                                  ? "bg-primary/20 border-primary/40 text-primary" 
-                                  : "bg-bg-surface/50 border-black/10 dark:border-white/10 text-text-muted"
-                              )}
-                            >
-                              {section === 'training' ? 'Entreno' : section === 'nutrition' ? 'Nutri' : 'Progreso'}
-                            </button>
-                          ))}
+                  
+                  <AnimatePresence>
+                    {editingSections === client.id && (
+                      <motion.div 
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        className="overflow-hidden"
+                      >
+                        <div className="mx-4 p-4 bg-bg-surface/50 border-x border-b border-black/10 dark:border-white/10 rounded-b-xl space-y-3">
+                          <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Secciones Activas</p>
+                          <div className="grid grid-cols-3 gap-2">
+                            {(['training', 'nutrition', 'progress'] as const).map(section => (
+                              <button
+                                key={section}
+                                onClick={() => {
+                                  onUpdateClient(client.id, {
+                                    enabledSections: {
+                                      ...(client.enabledSections || { training: true, nutrition: true, progress: true }),
+                                      [section]: !(client.enabledSections?.[section] ?? true)
+                                    }
+                                  });
+                                }}
+                                className={cn(
+                                  "py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider border transition-all",
+                                  (client.enabledSections?.[section] ?? true) 
+                                    ? "bg-primary/20 border-primary/40 text-primary" 
+                                    : "bg-bg-surface/50 border-black/10 dark:border-white/10 text-text-muted"
+                                )}
+                              >
+                                {section === 'training' ? 'Entreno' : section === 'nutrition' ? 'Nutri' : 'Progreso'}
+                              </button>
+                            ))}
+                          </div>
                         </div>
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-            ))
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              );
+            })
           ) : (
             <div className="py-12 flex flex-col items-center justify-center text-center gap-4 glass-card rounded-2xl border-dashed border-black/10 dark:border-white/10">
               <div className="size-16 rounded-full bg-bg-surface/50 flex items-center justify-center">
@@ -2075,9 +2124,9 @@ const WelcomeScreen = ({ onLogin }: { onLogin: () => void }) => {
 
 const UserManagementScreen = ({ 
   users, 
-  onBack,
-  onBlockUser,
-  onDeleteUser
+  onBack, 
+  onBlockUser, 
+  onDeleteUser 
 }: { 
   users: UserProfile[]; 
   onBack: () => void;
@@ -2086,6 +2135,7 @@ const UserManagementScreen = ({
 }) => {
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState<'all' | 'admin' | 'coach' | 'client'>('all');
+  const [userToDelete, setUserToDelete] = useState<UserProfile | null>(null);
 
   const filteredUsers = users.filter(u => {
     if (!u) return false;
@@ -2162,11 +2212,7 @@ const UserManagementScreen = ({
                 <Lock className="size-4" />
               </button>
               <button 
-                onClick={() => {
-                  if (window.confirm(`¿Estás seguro de eliminar a ${user.name}? Esta acción no se puede deshacer.`)) {
-                    onDeleteUser(user.id);
-                  }
-                }}
+                onClick={() => setUserToDelete(user)}
                 className="p-2 bg-red-500/10 text-red-500 rounded-lg hover:bg-red-500/20"
                 title="Eliminar"
               >
@@ -2176,6 +2222,23 @@ const UserManagementScreen = ({
           </div>
         ))}
       </div>
+
+      <AnimatePresence>
+        {userToDelete && (
+          <CustomConfirm
+            title="¿Eliminar usuario?"
+            message={`¿Estás seguro de eliminar a ${userToDelete.name}? Esta acción no se puede deshacer.`}
+            confirmLabel="Eliminar"
+            cancelLabel="Cancelar"
+            isDestructive={true}
+            onConfirm={() => {
+              onDeleteUser(userToDelete.id);
+              setUserToDelete(null);
+            }}
+            onCancel={() => setUserToDelete(null)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 };
@@ -3086,6 +3149,8 @@ const WorkoutScreen = ({ isCoach, clientData, onReportDiscomfort }: { isCoach?: 
     }
   };
 
+  const currentExercise = selectedDay?.exercises?.[currentExerciseIdx];
+
   const toggleSet = (id: number) => {
     if (isCoach) return;
     const set = sets.find(s => s.id === id);
@@ -3101,7 +3166,7 @@ const WorkoutScreen = ({ isCoach, clientData, onReportDiscomfort }: { isCoach?: 
         const newState = !s.completed;
         if (newState) {
           // Start rest timer automatically
-          setRestTime(selectedDay.exercises[currentExerciseIdx].rest);
+          setRestTime(currentExercise?.rest ?? 0);
           setIsResting(true);
         }
         return { ...s, completed: newState };
@@ -3225,11 +3290,11 @@ const WorkoutScreen = ({ isCoach, clientData, onReportDiscomfort }: { isCoach?: 
     );
   };
 
-  const currentExercise = selectedDay?.exercises?.[currentExerciseIdx];
+  // Remove the old definition of currentExercise since we moved it up
 
   const allSetsCompleted = sets.length > 0 && sets.every(s => {
     const isCompleted = s.completed;
-    const weightEntered = !currentExercise?.clientEntersWeight || (s.kg !== undefined && s.kg > 0);
+    const weightEntered = !currentExercise?.clientEntersWeight || (s.kg !== undefined && s.kg !== null && s.kg > 0);
     return isCompleted && weightEntered;
   });
 
@@ -6969,10 +7034,15 @@ export default function App() {
   useEffect(() => {
     if (!isAuthReady) return;
 
-    const coachesUnsubscribe = onSnapshot(collection(db, 'coaches'), (snapshot) => {
-      const coaches = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Coach));
-      setCoachesList(coaches);
-    }, (error) => handleFirestoreError(error, OperationType.LIST, 'coaches'));
+    let coachesUnsubscribe = () => {};
+    if (userRole === 'admin' || userRole === 'coach') {
+      coachesUnsubscribe = onSnapshot(collection(db, 'coaches'), (snapshot) => {
+        const coaches = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Coach));
+        setCoachesList(coaches);
+      }, (error) => handleFirestoreError(error, OperationType.LIST, 'coaches'));
+    } else {
+      setCoachesList([]);
+    }
 
     let clientsQuery;
     if (userRole === 'admin') {
@@ -6987,7 +7057,7 @@ export default function App() {
     }
 
     const clientsUnsubscribe = onSnapshot(clientsQuery, (snapshot) => {
-      const clients = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Client));
+      const clients = snapshot.docs.map(doc => normalizeClient({ id: doc.id, ...doc.data() }) as Client);
       setClientsList(clients);
     }, (error) => handleFirestoreError(error, OperationType.LIST, 'clients'));
 
@@ -7118,7 +7188,7 @@ export default function App() {
         if (userData.role === 'client') {
           const clientDoc = await getDoc(doc(db, 'clients', user.uid));
           if (clientDoc.exists()) {
-            setSelectedClient({ id: clientDoc.id, ...clientDoc.data() } as Client);
+            setSelectedClient(normalizeClient({ id: clientDoc.id, ...clientDoc.data() }));
             setScreen('home');
           }
         } else {
@@ -7436,30 +7506,46 @@ export default function App() {
                 onDeleteUser={handleDeleteUser}
               />
             )}
-            {screen === 'home' && <HomeScreen isCoach={isCoachViewing} clientData={currentClient} coaches={coachesList} />}
+            {screen === 'home' && (
+              <ErrorBoundary fallback={<div className="p-6 text-center text-red-500">Error al cargar el inicio</div>}>
+                <HomeScreen isCoach={isCoachViewing} clientData={currentClient} coaches={coachesList} />
+              </ErrorBoundary>
+            )}
             {screen === 'dashboard' && (
-              <DashboardScreen 
-                coach={loggedInCoach}
-                clients={clientsList}
-                notifications={notifications}
-                onAddClient={() => setScreen('register')} 
-                onSelectClient={handleSelectClient}
-                onMarkNotificationRead={(id) => setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n))}
-                onUpdateClient={handleUpdateClient}
-                userRole={userRole}
-                setScreen={setScreen}
-              />
+              <ErrorBoundary fallback={<div className="p-6 text-center text-red-500">Error al cargar el panel de control</div>}>
+                <DashboardScreen 
+                  coach={loggedInCoach}
+                  clients={clientsList}
+                  notifications={notifications}
+                  onAddClient={() => setScreen('register')} 
+                  onSelectClient={handleSelectClient}
+                  onMarkNotificationRead={(id) => setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n))}
+                  onUpdateClient={handleUpdateClient}
+                  userRole={userRole}
+                  setScreen={setScreen}
+                />
+              </ErrorBoundary>
             )}
             {screen === 'workout' && (
-              <WorkoutScreen 
-                isCoach={isCoachViewing} 
-                clientData={currentClient} 
-                onReportDiscomfort={handleReportDiscomfort}
-              />
+              <ErrorBoundary fallback={<div className="p-6 text-center text-red-500">Error al cargar el entrenamiento</div>}>
+                <WorkoutScreen 
+                  isCoach={isCoachViewing} 
+                  clientData={currentClient} 
+                  onReportDiscomfort={handleReportDiscomfort}
+                />
+              </ErrorBoundary>
             )}
             {screen === 'timer' && <TimerScreen />}
-            {screen === 'nutrition' && <NutritionScreen isCoach={isCoachViewing} clientData={currentClient} />}
-            {screen === 'progress' && <ProgressScreen isCoach={isCoachViewing} clientData={currentClient} />}
+            {screen === 'nutrition' && (
+              <ErrorBoundary fallback={<div className="p-6 text-center text-red-500">Error al cargar la nutrición</div>}>
+                <NutritionScreen isCoach={isCoachViewing} clientData={currentClient} />
+              </ErrorBoundary>
+            )}
+            {screen === 'progress' && (
+              <ErrorBoundary fallback={<div className="p-6 text-center text-red-500">Error al cargar el progreso</div>}>
+                <ProgressScreen isCoach={isCoachViewing} clientData={currentClient} />
+              </ErrorBoundary>
+            )}
             {screen === 'profile' && (
               <ErrorBoundary fallback={<div className="p-6 text-center text-red-500">Error al cargar el perfil</div>}>
                 <ProfileScreen 

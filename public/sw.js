@@ -31,8 +31,16 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
+  const req = event.request;
+  const url = new URL(req.url);
+
   // Solo cachear peticiones GET
-  if (event.request.method !== 'GET') return;
+  if (req.method !== 'GET') return;
+
+  // Evitar cachear peticiones que no sean http o https (como chrome-extension://)
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    return;
+  }
 
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
